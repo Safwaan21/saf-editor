@@ -417,7 +417,7 @@ function App() {
                   {(aiConfig.type === "webllm" && llmState.isInitialized) ||
                   (aiConfig.type === "api" && aiConfig.apiKey) ? (
                     <>
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <div className="animate-pulse w-2 h-2 rounded-full bg-green-500" />
                       AI Model Ready
                     </>
                   ) : (
