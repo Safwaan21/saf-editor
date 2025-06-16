@@ -254,6 +254,7 @@ function App() {
       // by finding the exact range to replace based on the original code block
       model.setValue(diffViewer.suggestedCode);
     }
+    setCode(diffViewer.suggestedCode);
 
     // Close diff viewer
     setDiffViewer({ isOpen: false, originalCode: "", suggestedCode: "" });
