@@ -2,10 +2,15 @@
 
 import { loadPyodide, type PyodideInterface } from "pyodide";
 
+interface FileData {
+  path: string;
+  content: string;
+}
+
 let pyodide: PyodideInterface | null = null;
 
 self.onmessage = async (event) => {
-  const { type, code } = event.data;
+  const { type, code, files } = event.data;
 
   if (type === "init") {
     try {
@@ -16,6 +21,7 @@ self.onmessage = async (event) => {
       await pyodide.runPythonAsync(`
         import sys
         import traceback
+        import os
         class Catcher:
             def __init__(self):
                 self.content = ""
@@ -39,13 +45,52 @@ self.onmessage = async (event) => {
     try {
       const startTime = performance.now();
 
-      await pyodide.runPythonAsync(`
-        try:
-            exec(${JSON.stringify(code)})
-        except Exception as e:
-            import traceback
-            sys.stderr.content += traceback.format_exc()
-      `);
+      // Write all files to the virtual file system
+      if (files && Array.isArray(files)) {
+        for (const file of files as FileData[]) {
+          // Create directories if they don't exist
+          const dirPath = file.path.substring(0, file.path.lastIndexOf("/"));
+          if (dirPath) {
+            await pyodide.runPythonAsync(`
+              import os
+              os.makedirs('${dirPath}', exist_ok=True)
+            `);
+          }
+
+          // Write the file content
+          pyodide.FS.writeFile(file.path, file.content);
+        }
+      }
+
+      // Always run main.py if it exists, otherwise fall back to the provided code
+      let hasMainPy = false;
+      if (files && Array.isArray(files)) {
+        hasMainPy = (files as FileData[]).some(
+          (file) => file.path === "main.py"
+        );
+      }
+
+      if (hasMainPy) {
+        // Run main.py as the entry point
+        await pyodide.runPythonAsync(`
+          try:
+              with open('main.py', 'r') as f:
+                  main_code = f.read()
+              exec(main_code)
+          except Exception as e:
+              import traceback
+              sys.stderr.content += traceback.format_exc()
+        `);
+      } else {
+        // Fallback to running the provided code directly
+        await pyodide.runPythonAsync(`
+          try:
+              exec(${JSON.stringify(code)})
+          except Exception as e:
+              import traceback
+              sys.stderr.content += traceback.format_exc()
+        `);
+      }
 
       const endTime = performance.now();
       const executionTime = endTime - startTime;
@@ -55,6 +100,7 @@ self.onmessage = async (event) => {
 
       await pyodide.runPythonAsync("sys.stdout.content = ''");
       await pyodide.runPythonAsync("sys.stderr.content = ''");
+
       self.postMessage({
         type: "result",
         stdout,

@@ -81,7 +81,42 @@ CRITICAL RULES:
 4. Do NOT repeat "The // operator is used for..." or similar explanations
 5. Output should be ready to execute immediately
 
-You will receive code context and a request. Respond with ONLY the ${language} code that addresses the request.`;
+You will receive code context and a request. Respond with ONLY the ${language} code that addresses the request.
+
+EXAMPLE 1:
+
+Code Context:
+
+for i in range(2):
+    print(i)
+
+Request:
+
+Change this to print numbers 0 to 9
+
+Output:
+
+for i in range(10):
+    print(i)
+
+EXAMPLE 2:
+
+Code Context:
+
+print("Hello, World!")
+
+Request:
+
+Print each character in the string "Hello, World!" on a new line
+
+Output:
+
+for char in "Hello, World!":
+    print(char)
+
+
+${language.toUpperCase()} CODE ONLY (no markdown, no explanations):
+`;
 
       const userPrompt = `Code Context:
 ${codeContext}
