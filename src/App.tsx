@@ -9,7 +9,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "./components/ui/popover";
-import { TriangleAlert, GripHorizontal, LoaderCircle } from "lucide-react";
+import {
+  TriangleAlert,
+  GripHorizontal,
+  LoaderCircle,
+  X,
+  Save,
+  SaveAll,
+  RotateCcw,
+} from "lucide-react";
 import { motion } from "motion/react";
 import PyodideWorker from "./pyodideWorker.ts?worker";
 import type { editor } from "monaco-editor";
@@ -20,6 +28,84 @@ import { useAIConfig } from "./hooks/useAIConfig";
 import { AISetupDialog } from "./components/AISetupDialog";
 import { MonacoDiffViewer } from "./components/MonacoDiffViewer";
 import { Textarea } from "./components/ui/textarea";
+import FileExplorer from "./components/file-explorer";
+
+export interface FileNode {
+  id: string;
+  name: string;
+  type: "file" | "folder";
+  content?: string;
+  children?: FileNode[];
+  isExpanded?: boolean;
+  isSelected?: boolean;
+}
+
+interface EditorTab {
+  fileId: string;
+  fileName: string;
+  content: string;
+  isDirty: boolean;
+  originalContent: string;
+}
+
+const initialFileTree: FileNode[] = [
+  {
+    id: "1",
+    name: "main.py",
+    type: "file",
+    content:
+      "print('Hello from main.py!')\n\n# Import from utils folder\nfrom utils.helpers import helper_function\nfrom utils.constants import PI, E\n\nprint('Calling helper function:')\nprint(helper_function())\n\nprint(f'\\nConstants from utils:')\nprint(f'PI = {PI}')\nprint(f'E = {E}')\n\nprint('\\nMulti-file execution works!')",
+  },
+  {
+    id: "2",
+    name: "utils",
+    type: "folder",
+    isExpanded: false,
+    children: [
+      {
+        id: "2-0",
+        name: "__init__.py",
+        type: "file",
+        content: "# Utils package",
+      },
+      {
+        id: "2-1",
+        name: "helpers.py",
+        type: "file",
+        content:
+          "def helper_function():\n    return 'This is a helper function from utils.helpers!'",
+      },
+      {
+        id: "2-2",
+        name: "constants.py",
+        type: "file",
+        content:
+          "PI = 3.14159\nE = 2.71828\n\nprint('Constants module loaded!')",
+      },
+    ],
+  },
+  {
+    id: "3",
+    name: "tests",
+    type: "folder",
+    isExpanded: false,
+    children: [
+      {
+        id: "3-1",
+        name: "test_main.py",
+        type: "file",
+        content:
+          "import unittest\n\nclass TestMain(unittest.TestCase):\n    def test_hello(self):\n        self.assertTrue(True)",
+      },
+    ],
+  },
+  {
+    id: "4",
+    name: "README.md",
+    type: "file",
+    content: "# My Python Project\n\nThis is a sample project structure.",
+  },
+];
 
 function App() {
   const workerRef = useRef<Worker | null>(null);
@@ -31,10 +117,24 @@ function App() {
   const [pyodideReady, setPyodideReady] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [pyodideError, setPyodideError] = useState("");
-  const [executionTime, setExecutionTime] = useState(0);
+  // const [executionTime, setExecutionTime] = useState(0);
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const [fileTree, setFileTree] = useState<FileNode[]>(initialFileTree);
+  const [selectedFile, setSelectedFile] = useState<FileNode | null>(
+    initialFileTree[0]
+  );
+  const [openTabs, setOpenTabs] = useState<EditorTab[]>([
+    {
+      fileId: initialFileTree[0].id,
+      fileName: initialFileTree[0].name,
+      content: initialFileTree[0].content || "",
+      isDirty: false,
+      originalContent: initialFileTree[0].content || "",
+    },
+  ]);
+  const [activeTabId, setActiveTabId] = useState<string>(initialFileTree[0].id);
   const [aiPopover, setAiPopover] = useState({
     isOpen: false,
     position: { x: 0, y: 0 },
@@ -61,6 +161,10 @@ function App() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState("stdout");
+  const [autoSave, setAutoSave] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
+    "saved"
+  );
 
   const isFullyLoaded = pyodideReady && editorReady;
 
@@ -84,6 +188,477 @@ function App() {
       setActiveTab("stdout");
     }
   }, [stderr, stdout]);
+
+  // Utility functions for file operations
+  const findFileById = (nodes: FileNode[], id: string): FileNode | null => {
+    for (const node of nodes) {
+      if (node.id === id) {
+        return node;
+      }
+      if (node.children) {
+        const found = findFileById(node.children, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const updateFileContent = (
+    nodes: FileNode[],
+    fileId: string,
+    content: string
+  ): FileNode[] => {
+    return nodes.map((node) => {
+      if (node.id === fileId) {
+        return { ...node, content };
+      }
+      if (node.children) {
+        return {
+          ...node,
+          children: updateFileContent(node.children, fileId, content),
+        };
+      }
+      return node;
+    });
+  };
+
+  const getAllFiles = (nodes: FileNode[]): FileNode[] => {
+    const files: FileNode[] = [];
+    for (const node of nodes) {
+      if (node.type === "file") {
+        files.push(node);
+      }
+      if (node.children) {
+        files.push(...getAllFiles(node.children));
+      }
+    }
+    return files;
+  };
+
+  // Generate unique ID for new files/folders
+  const generateId = (): string => {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // Generate file path based on file tree structure
+  const getFilePath = (
+    targetFile: FileNode,
+    nodes: FileNode[],
+    currentPath: string = ""
+  ): string => {
+    for (const node of nodes) {
+      const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
+
+      if (node.id === targetFile.id) {
+        return nodePath;
+      }
+
+      if (node.children) {
+        const childPath = getFilePath(targetFile, node.children, nodePath);
+        if (childPath) return childPath;
+      }
+    }
+    return "";
+  };
+
+  // CRUD Operations
+  const createFile = (
+    parentId: string | null,
+    name: string,
+    type: "file" | "folder"
+  ) => {
+    // Check for duplicates to prevent React StrictMode double-creation
+    const checkForDuplicate = (
+      nodes: FileNode[],
+      targetName: string
+    ): boolean => {
+      return nodes.some((node) => node.name === targetName);
+    };
+
+    let targetNodes: FileNode[];
+    if (parentId === null) {
+      targetNodes = fileTree;
+    } else {
+      const parentFolder = findFileById(fileTree, parentId);
+      if (!parentFolder || parentFolder.type !== "folder") return null;
+      targetNodes = parentFolder.children || [];
+    }
+
+    // Generate unique name if duplicate exists
+    let uniqueName = name;
+    let counter = 1;
+    while (checkForDuplicate(targetNodes, uniqueName)) {
+      if (name.includes(".")) {
+        // For files with extensions
+        const parts = name.split(".");
+        const extension = parts.pop();
+        const baseName = parts.join(".");
+        uniqueName = `${baseName} ${counter}.${extension}`;
+      } else {
+        // For folders or files without extensions
+        uniqueName = `${name} ${counter}`;
+      }
+      counter++;
+    }
+
+    const newNode: FileNode = {
+      id: generateId(),
+      name: uniqueName,
+      type,
+      content: type === "file" ? "" : undefined,
+      children: type === "folder" ? [] : undefined,
+      isExpanded: false,
+    };
+
+    if (parentId === null) {
+      // Add to root
+      setFileTree((prev) => [...prev, newNode]);
+    } else {
+      // Add to specific folder
+      setFileTree((prev) => addToFolder(prev, parentId, newNode));
+    }
+
+    // If it's a file, open it in a new tab
+    if (type === "file") {
+      openFileInTab(newNode);
+    }
+
+    return newNode;
+  };
+
+  const addToFolder = (
+    nodes: FileNode[],
+    folderId: string,
+    newNode: FileNode
+  ): FileNode[] => {
+    return nodes.map((node) => {
+      if (node.id === folderId && node.type === "folder") {
+        return {
+          ...node,
+          children: [...(node.children || []), newNode],
+          isExpanded: true, // Expand folder when adding items
+        };
+      }
+      if (node.children) {
+        return {
+          ...node,
+          children: addToFolder(node.children, folderId, newNode),
+        };
+      }
+      return node;
+    });
+  };
+
+  const deleteFile = (fileId: string) => {
+    // Close any open tabs for this file (and its children if it's a folder)
+    const fileToDelete = findFileById(fileTree, fileId);
+    if (fileToDelete) {
+      const filesToClose: string[] = [];
+
+      const collectFileIds = (node: FileNode) => {
+        if (node.type === "file") {
+          filesToClose.push(node.id);
+        }
+        if (node.children) {
+          node.children.forEach(collectFileIds);
+        }
+      };
+
+      collectFileIds(fileToDelete);
+
+      // Close all tabs for files being deleted
+      filesToClose.forEach((id) => {
+        setOpenTabs((prev) => prev.filter((tab) => tab.fileId !== id));
+      });
+
+      // If active tab is being deleted, switch to another tab
+      if (filesToClose.includes(activeTabId)) {
+        const remainingTabs = openTabs.filter(
+          (tab) => !filesToClose.includes(tab.fileId)
+        );
+        if (remainingTabs.length > 0) {
+          const newActiveTab = remainingTabs[remainingTabs.length - 1];
+          setActiveTabId(newActiveTab.fileId);
+          const fileNode = findFileById(fileTree, newActiveTab.fileId);
+          setSelectedFile(fileNode || null);
+        } else {
+          setActiveTabId("");
+          setSelectedFile(null);
+        }
+      }
+    }
+
+    // Remove from file tree
+    setFileTree((prev) => removeFromTree(prev, fileId));
+  };
+
+  const removeFromTree = (
+    nodes: FileNode[],
+    idToRemove: string
+  ): FileNode[] => {
+    return nodes
+      .filter((node) => node.id !== idToRemove)
+      .map((node) => ({
+        ...node,
+        children: node.children
+          ? removeFromTree(node.children, idToRemove)
+          : undefined,
+      }));
+  };
+
+  const renameFile = (fileId: string, newName: string) => {
+    setFileTree((prev) => renameInTree(prev, fileId, newName));
+
+    // Update tab name if file is open
+    setOpenTabs((prev) =>
+      prev.map((tab) =>
+        tab.fileId === fileId ? { ...tab, fileName: newName } : tab
+      )
+    );
+  };
+
+  const renameInTree = (
+    nodes: FileNode[],
+    fileId: string,
+    newName: string
+  ): FileNode[] => {
+    return nodes.map((node) => {
+      if (node.id === fileId) {
+        return { ...node, name: newName };
+      }
+      if (node.children) {
+        return {
+          ...node,
+          children: renameInTree(node.children, fileId, newName),
+        };
+      }
+      return node;
+    });
+  };
+
+  // Save functionality
+  const saveToLocalStorage = (fileTree: FileNode[]) => {
+    try {
+      localStorage.setItem("safs-editor-files", JSON.stringify(fileTree));
+      localStorage.setItem("safs-editor-timestamp", Date.now().toString());
+      setSaveStatus("saved");
+    } catch (error) {
+      console.error("Failed to save to localStorage:", error);
+      setSaveStatus("unsaved");
+    }
+  };
+
+  const loadFromLocalStorage = (): FileNode[] | null => {
+    try {
+      const saved = localStorage.getItem("safs-editor-files");
+      return saved ? JSON.parse(saved) : null;
+    } catch (error) {
+      console.error("Failed to load from localStorage:", error);
+      return null;
+    }
+  };
+
+  const saveCurrentFile = async () => {
+    if (!activeTabId) return;
+
+    setSaveStatus("saving");
+
+    // Update the tab's original content to mark it as saved
+    setOpenTabs((prev) =>
+      prev.map((tab) =>
+        tab.fileId === activeTabId
+          ? { ...tab, isDirty: false, originalContent: tab.content }
+          : tab
+      )
+    );
+
+    // Save to localStorage (in a real app, this would be an API call)
+    setTimeout(() => {
+      saveToLocalStorage(fileTree);
+    }, 500); // Simulate save delay
+  };
+
+  const saveAllFiles = async () => {
+    setSaveStatus("saving");
+
+    // Mark all tabs as saved
+    setOpenTabs((prev) =>
+      prev.map((tab) => ({
+        ...tab,
+        isDirty: false,
+        originalContent: tab.content,
+      }))
+    );
+
+    // Save to localStorage
+    setTimeout(() => {
+      saveToLocalStorage(fileTree);
+    }, 500);
+  };
+
+  const hasUnsavedChanges = () => {
+    return openTabs.some((tab) => tab.isDirty);
+  };
+
+  const resetToDefault = () => {
+    if (
+      hasUnsavedChanges() &&
+      !confirm(
+        "Are you sure you want to reset to default? All unsaved changes will be lost."
+      )
+    ) {
+      return;
+    }
+
+    // Clear localStorage
+    localStorage.removeItem("safs-editor-files");
+    localStorage.removeItem("safs-editor-timestamp");
+
+    // Reset file tree to initial state
+    setFileTree(initialFileTree);
+
+    // Reset tabs to default (open main.py)
+    const defaultTab: EditorTab = {
+      fileId: initialFileTree[0].id,
+      fileName: initialFileTree[0].name,
+      content: initialFileTree[0].content || "",
+      isDirty: false,
+      originalContent: initialFileTree[0].content || "",
+    };
+
+    setOpenTabs([defaultTab]);
+    setActiveTabId(initialFileTree[0].id);
+    setSelectedFile(initialFileTree[0]);
+
+    // Reset other states
+    setSaveStatus("saved");
+    setStdout("");
+    setStderr("");
+  };
+
+  // Auto-save functionality
+  useEffect(() => {
+    if (!autoSave || !hasUnsavedChanges()) return;
+
+    const autoSaveTimer = setTimeout(() => {
+      saveAllFiles();
+    }, 2000); // Auto-save after 2 seconds of inactivity
+
+    return () => clearTimeout(autoSaveTimer);
+  }, [fileTree, openTabs, autoSave]);
+
+  // Load files on startup
+  useEffect(() => {
+    const savedFiles = loadFromLocalStorage();
+    if (savedFiles && savedFiles.length > 0) {
+      // Clean up any duplicate entries that might have been created
+      const cleanedFiles = removeDuplicatesByName(savedFiles);
+      setFileTree(cleanedFiles);
+      // Open the first file
+      const firstFile = getAllFiles(cleanedFiles)[0];
+      if (firstFile) {
+        const newTab: EditorTab = {
+          fileId: firstFile.id,
+          fileName: firstFile.name,
+          content: firstFile.content || "",
+          isDirty: false,
+          originalContent: firstFile.content || "",
+        };
+        setOpenTabs([newTab]);
+        setActiveTabId(firstFile.id);
+        setSelectedFile(firstFile);
+      }
+    }
+  }, []); // Only run on mount
+
+  // Helper function to remove duplicate entries
+  const removeDuplicatesByName = (nodes: FileNode[]): FileNode[] => {
+    const seen = new Set<string>();
+    return nodes.filter((node) => {
+      if (seen.has(node.name)) {
+        return false;
+      }
+      seen.add(node.name);
+      if (node.children) {
+        node.children = removeDuplicatesByName(node.children);
+      }
+      return true;
+    });
+  };
+
+  // Tab management functions
+  const openFileInTab = (file: FileNode) => {
+    // Check if file is already open
+    const existingTab = openTabs.find((tab) => tab.fileId === file.id);
+
+    if (existingTab) {
+      // Switch to existing tab
+      setActiveTabId(file.id);
+      setSelectedFile(file);
+    } else {
+      // Open new tab
+      const newTab: EditorTab = {
+        fileId: file.id,
+        fileName: file.name,
+        content: file.content || "",
+        isDirty: false,
+        originalContent: file.content || "",
+      };
+
+      setOpenTabs((prev) => [...prev, newTab]);
+      setActiveTabId(file.id);
+      setSelectedFile(file);
+    }
+  };
+
+  const closeTab = (fileId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+
+    const tabToClose = openTabs.find((tab) => tab.fileId === fileId);
+    if (!tabToClose) return;
+
+    // If tab has unsaved changes, you could add a confirmation dialog here
+    if (tabToClose.isDirty) {
+      if (!confirm(`Close ${tabToClose.fileName}? You have unsaved changes.`)) {
+        return;
+      }
+    }
+
+    const updatedTabs = openTabs.filter((tab) => tab.fileId !== fileId);
+    setOpenTabs(updatedTabs);
+
+    // If we're closing the active tab, switch to another tab
+    if (activeTabId === fileId) {
+      if (updatedTabs.length > 0) {
+        const newActiveTab = updatedTabs[updatedTabs.length - 1];
+        setActiveTabId(newActiveTab.fileId);
+        const fileNode = findFileById(fileTree, newActiveTab.fileId);
+        setSelectedFile(fileNode || null);
+      } else {
+        setActiveTabId("");
+        setSelectedFile(null);
+      }
+    }
+  };
+
+  const switchToTab = (fileId: string) => {
+    setActiveTabId(fileId);
+    const fileNode = findFileById(fileTree, fileId);
+    setSelectedFile(fileNode || null);
+  };
+
+  const updateTabContent = (fileId: string, content: string) => {
+    setOpenTabs((prev) =>
+      prev.map((tab) =>
+        tab.fileId === fileId
+          ? { ...tab, content, isDirty: content !== tab.originalContent }
+          : tab
+      )
+    );
+
+    // Also update the file tree content using the utility function
+    setFileTree((prev) => updateFileContent(prev, fileId, content));
+  };
 
   const handleEditorMount = (editor: editor.IStandaloneCodeEditor) => {
     setEditorReady(true);
@@ -229,12 +804,6 @@ function App() {
         originalCode: aiPopover.codeContext,
         suggestedCode: suggestedCode.trim(),
       });
-
-      console.log("=== AI Generation ===");
-      console.log("User Input:", aiPopover.prompt);
-      console.log("Original Code:", aiPopover.codeContext);
-      console.log("AI Suggestion:", suggestedCode);
-      console.log("====================");
     } catch (error) {
       console.error("Failed to generate code:", error);
       alert("Failed to generate code suggestion. Please try again.");
@@ -282,14 +851,14 @@ function App() {
     workerRef.current.postMessage({ type: "init" });
 
     workerRef.current.onmessage = (event: MessageEvent) => {
-      const { type, stdout, stderr, error, executionTime } = event.data;
+      const { type, stdout, stderr, error } = event.data;
 
       if (type === "ready") {
         setPyodideReady(true);
       } else if (type === "result") {
         setStdout(stdout || "");
         setStderr(stderr || "");
-        setExecutionTime(executionTime || 0);
+        // setExecutionTime(executionTime || 0);
       } else if (type === "error") {
         setPyodideError(error || "Unknown error");
       }
@@ -309,6 +878,14 @@ function App() {
       }
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         handleToggleCommandK();
+      }
+      if (e.key === "s" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        e.preventDefault();
+        saveCurrentFile();
+      }
+      if (e.key === "s" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault();
+        saveAllFiles();
       }
     };
     document.addEventListener("keydown", down);
@@ -353,7 +930,22 @@ function App() {
 
   const handleRunCode = async () => {
     if (workerRef.current) {
-      workerRef.current.postMessage({ type: "run", code });
+      // Get all files from the file tree
+      const allFiles = getAllFiles(fileTree);
+
+      // Convert to the format expected by the worker
+      const filesForWorker = allFiles
+        .filter((file) => file.content !== undefined) // Only include files with content
+        .map((file) => ({
+          path: getFilePath(file, fileTree),
+          content: file.content || "",
+        }));
+
+      workerRef.current.postMessage({
+        type: "run",
+        code,
+        files: filesForWorker,
+      });
     }
   };
 
@@ -407,14 +999,68 @@ function App() {
         initial={{ opacity: 0 }}
         animate={{ opacity: isFullyLoaded ? 1 : 0 }}
         transition={{ duration: 0.8, ease: "easeInOut" }}
-        className="flex flex-col justify-center items-center h-screen"
+        className="flex flex-col h-screen"
       >
-        <div className="flex flex-col md:flex-row items-center justify-between w-full px-4 gap-2 mb-2">
-          <div className="flex-1"></div>
-          <h1 className="h-[5vh] md:text-xl mt-4 text-2xl font-normal text-white ">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row items-center justify-between w-full px-4 py-2 border-b border-gray-600 bg-[#1e1e1e]">
+          <h1 className="md:text-xl text-2xl font-normal text-white">
             Saf's Editor
           </h1>
           <div className="flex-1 flex justify-end items-center gap-2">
+            {/* Save Status & Buttons */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">
+                {saveStatus === "saving" && "Saving..."}
+                {saveStatus === "saved" && "All changes saved"}
+                {saveStatus === "unsaved" &&
+                  hasUnsavedChanges() &&
+                  "Unsaved changes"}
+              </span>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={saveCurrentFile}
+                disabled={!activeTabId || saveStatus === "saving"}
+                className="h-8 px-2"
+              >
+                <Save className="w-4 h-4 mr-1" />
+                Save
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={saveAllFiles}
+                disabled={!hasUnsavedChanges() || saveStatus === "saving"}
+                className="h-8 px-2"
+              >
+                <SaveAll className="w-4 h-4 mr-1" />
+                Save All
+              </Button>
+
+              <Button
+                size="sm"
+                variant={autoSave ? "default" : "ghost"}
+                onClick={() => setAutoSave(!autoSave)}
+                className="h-8 px-2"
+                title={autoSave ? "Auto-save enabled" : "Auto-save disabled"}
+              >
+                Auto
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={resetToDefault}
+                className="h-8 px-2 text-red-400 hover:text-red-300"
+                title="Reset to default file structure"
+              >
+                <RotateCcw className="w-4 h-4 mr-1" />
+                Reset
+              </Button>
+            </div>
+
             <Dialog>
               <DialogTrigger>
                 <Button variant="outline">
@@ -441,21 +1087,80 @@ function App() {
               />
             </Dialog>
             <Button onClick={handleRunCode} variant="outline">
-              Run Code (Cmd + Enter)
+              {getAllFiles(fileTree).some((file) => file.name === "main.py")
+                ? "Run main.py (Cmd + Enter)"
+                : "Run Code (Cmd + Enter)"}
             </Button>
           </div>
         </div>
 
-        <Editor
-          height={`${95 - terminalTabHeight}vh`}
-          defaultLanguage="python"
-          defaultValue={code}
-          theme="vs-dark"
-          options={{ minimap: { enabled: false } }}
-          onChange={(value) => setCode(value || "")}
-          onMount={handleEditorMount}
-        />
+        {/* Main Content Area */}
+        <div className="flex flex-row flex-1 overflow-hidden">
+          <FileExplorer
+            fileTree={fileTree}
+            className="w-1/5 border-r border-gray-600"
+            onSelectFile={openFileInTab}
+            selectedFileId={activeTabId}
+            onCreateFile={createFile}
+            onDeleteFile={deleteFile}
+            onRenameFile={renameFile}
+          />
 
+          <div className="flex-1 flex flex-col">
+            {/* Tab Bar */}
+            {openTabs.length > 0 && (
+              <div className="flex bg-[#2d2d2d] border-b border-gray-600 overflow-x-auto">
+                {openTabs.map((tab) => (
+                  <div
+                    key={tab.fileId}
+                    className={`flex items-center px-3 py-2 border-r border-gray-600 cursor-pointer hover:bg-[#3e3e3e] min-w-0 ${
+                      activeTabId === tab.fileId ? "bg-[#1e1e1e]" : ""
+                    }`}
+                    onClick={() => switchToTab(tab.fileId)}
+                  >
+                    <span className="text-sm text-gray-300 truncate">
+                      {tab.fileName}
+                      {tab.isDirty && (
+                        <span className="ml-1 text-amber-400">•</span>
+                      )}
+                    </span>
+                    <button
+                      onClick={(e) => closeTab(tab.fileId, e)}
+                      className="ml-2 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded p-1 text-xs"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Editor */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {selectedFile ? (
+                <Editor
+                  height="100%"
+                  defaultLanguage="python"
+                  value={
+                    openTabs.find((tab) => tab.fileId === activeTabId)
+                      ?.content || ""
+                  }
+                  theme="vs-dark"
+                  options={{ minimap: { enabled: false } }}
+                  onChange={(value) => {
+                    setCode(value || "");
+                    updateTabContent(activeTabId, value || "");
+                  }}
+                  onMount={handleEditorMount}
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-gray-400">
+                  <span>No file selected</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
         {/* AI Prompt Popover */}
         <Popover
           open={aiPopover.isOpen}
@@ -558,18 +1263,23 @@ function App() {
           </div>
         )}
 
+        {/* Terminal Resizer */}
         <div
-          className="w-full h-1 bg-gray-700 flex items-center justify-center cursor-row-resize hover:bg-gray-600 transition-colors"
+          className="w-full h-1 bg-gray-700 flex items-center justify-center cursor-row-resize hover:bg-gray-600 transition-colors flex-shrink-0"
           onMouseDown={handleMouseDown}
         >
           <GripHorizontal className="w-8 h-3 text-gray-400" />
         </div>
-        <div className="w-full justify-between flex items-center">
+
+        {/* Terminal Section */}
+        <div
+          className="w-full flex-shrink-0 bg-[#1e1e1e] border-t border-gray-600"
+          style={{ height: `${terminalTabHeight}vh` }}
+        >
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
-            className="flex-1 pt-2 px-2 font-mono overflow-y-auto"
-            style={{ height: `${terminalTabHeight}vh` }}
+            className="h-full flex flex-col"
           >
             <TabsList className="sticky top-0 bg-[#1e1e1e] z-10">
               <TabsTrigger value="stdout">Stdout</TabsTrigger>
@@ -580,20 +1290,21 @@ function App() {
                 Stderr
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="stdout">
+            <TabsContent value="stdout" className="flex-1 overflow-auto p-2">
               <div className="w-full">
-                <h1 className="text-white whitespace-pre-wrap">{stdout}</h1>
+                <pre className="text-white text-xs whitespace-pre-wrap font-mono">
+                  {stdout}
+                </pre>
               </div>
             </TabsContent>
-            <TabsContent value="stderr">
+            <TabsContent value="stderr" className="flex-1 overflow-auto p-2">
               <div className="w-full">
-                <h1 className="text-white whitespace-pre-wrap">{stderr}</h1>
+                <pre className="text-white text-xs whitespace-pre-wrap font-mono">
+                  {stderr}
+                </pre>
               </div>
             </TabsContent>
           </Tabs>
-          <p className="text-neutral-500 text-xs whitespace-nowrap flex-shrink-0 pl-2 pr-2">
-            Execution Time: {executionTime.toFixed(2)}ms
-          </p>
         </div>
       </motion.div>
     </div>
