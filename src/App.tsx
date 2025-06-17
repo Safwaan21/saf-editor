@@ -19,6 +19,7 @@ import { useAPIProvider } from "./hooks/useAPIProvider";
 import { useAIConfig } from "./hooks/useAIConfig";
 import { AISetupDialog } from "./components/AISetupDialog";
 import { MonacoDiffViewer } from "./components/MonacoDiffViewer";
+import { Textarea } from "./components/ui/textarea";
 
 function App() {
   const workerRef = useRef<Worker | null>(null);
@@ -30,6 +31,7 @@ function App() {
   const [pyodideReady, setPyodideReady] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [pyodideError, setPyodideError] = useState("");
+  const [executionTime, setExecutionTime] = useState(0);
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -280,13 +282,14 @@ function App() {
     workerRef.current.postMessage({ type: "init" });
 
     workerRef.current.onmessage = (event: MessageEvent) => {
-      const { type, stdout, stderr, error } = event.data;
+      const { type, stdout, stderr, error, executionTime } = event.data;
 
       if (type === "ready") {
         setPyodideReady(true);
       } else if (type === "result") {
         setStdout(stdout || "");
         setStderr(stderr || "");
+        setExecutionTime(executionTime || 0);
       } else if (type === "error") {
         setPyodideError(error || "Unknown error");
       }
@@ -500,18 +503,19 @@ function App() {
                   ×
                 </button>
               </div>
-              <textarea
+              <Textarea
+                rows={4}
                 value={aiPopover.prompt}
                 onChange={(e) =>
                   setAiPopover((prev) => ({ ...prev, prompt: e.target.value }))
                 }
                 onKeyDown={handlePromptKeyDown}
                 placeholder="Describe the changes you want to make..."
-                className="w-full h-20 px-3 py-2 text-sm bg-gray-800 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="resize-none"
                 autoFocus
               />
               <div className="flex justify-end space-x-2">
-                <button
+                <Button
                   onClick={() =>
                     setAiPopover((prev) => ({
                       ...prev,
@@ -519,20 +523,20 @@ function App() {
                       prompt: "",
                     }))
                   }
-                  className="px-3 py-1.5 text-sm text-gray-300 hover:text-gray-100"
+                  variant="ghost"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handlePromptSubmit}
+                  variant="outline"
                   disabled={!aiPopover.prompt.trim() || isGenerating}
-                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
                   {isGenerating && (
                     <LoaderCircle className="w-3 h-3 animate-spin" />
                   )}
                   <span>{isGenerating ? "Generating..." : "Send"}</span>
-                </button>
+                </Button>
               </div>
             </div>
           </PopoverContent>
@@ -560,33 +564,37 @@ function App() {
         >
           <GripHorizontal className="w-8 h-3 text-gray-400" />
         </div>
-
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="w-full pt-2 px-2 font-mono overflow-y-auto"
-          style={{ height: `${terminalTabHeight}vh` }}
-        >
-          <TabsList className="sticky top-0 bg-[#1e1e1e] z-10">
-            <TabsTrigger value="stdout">Stdout</TabsTrigger>
-            <TabsTrigger value="stderr">
-              {stderr.length > 0 && (
-                <TriangleAlert className="w-4 h-4 text-amber-500" />
-              )}
-              Stderr
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="stdout">
-            <div className="w-full">
-              <h1 className="text-white whitespace-pre-wrap">{stdout}</h1>
-            </div>
-          </TabsContent>
-          <TabsContent value="stderr">
-            <div className="w-full">
-              <h1 className="text-white whitespace-pre-wrap">{stderr}</h1>
-            </div>
-          </TabsContent>
-        </Tabs>
+        <div className="w-full justify-between flex items-center">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex-1 pt-2 px-2 font-mono overflow-y-auto"
+            style={{ height: `${terminalTabHeight}vh` }}
+          >
+            <TabsList className="sticky top-0 bg-[#1e1e1e] z-10">
+              <TabsTrigger value="stdout">Stdout</TabsTrigger>
+              <TabsTrigger value="stderr">
+                {stderr.length > 0 && (
+                  <TriangleAlert className="w-4 h-4 text-amber-500" />
+                )}
+                Stderr
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="stdout">
+              <div className="w-full">
+                <h1 className="text-white whitespace-pre-wrap">{stdout}</h1>
+              </div>
+            </TabsContent>
+            <TabsContent value="stderr">
+              <div className="w-full">
+                <h1 className="text-white whitespace-pre-wrap">{stderr}</h1>
+              </div>
+            </TabsContent>
+          </Tabs>
+          <p className="text-neutral-500 text-xs whitespace-nowrap flex-shrink-0 pl-2 pr-2">
+            Execution Time: {executionTime.toFixed(2)}ms
+          </p>
+        </div>
       </motion.div>
     </div>
   );

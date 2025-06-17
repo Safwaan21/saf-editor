@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
 
-import { loadPyodide } from "pyodide";
+import { loadPyodide, type PyodideInterface } from "pyodide";
 
-let pyodide: any = null;
+let pyodide: PyodideInterface | null = null;
 
 self.onmessage = async (event) => {
   const { type, code } = event.data;
@@ -37,6 +37,8 @@ self.onmessage = async (event) => {
 
   if (type === "run" && pyodide) {
     try {
+      const startTime = performance.now();
+
       await pyodide.runPythonAsync(`
         try:
             exec(${JSON.stringify(code)})
@@ -45,13 +47,20 @@ self.onmessage = async (event) => {
             sys.stderr.content += traceback.format_exc()
       `);
 
+      const endTime = performance.now();
+      const executionTime = endTime - startTime;
+
       const stdout = await pyodide.runPythonAsync("sys.stdout.content");
       const stderr = await pyodide.runPythonAsync("sys.stderr.content");
 
       await pyodide.runPythonAsync("sys.stdout.content = ''");
       await pyodide.runPythonAsync("sys.stderr.content = ''");
-
-      self.postMessage({ type: "result", stdout, stderr });
+      self.postMessage({
+        type: "result",
+        stdout,
+        stderr,
+        executionTime: executionTime,
+      });
     } catch (err) {
       self.postMessage({
         type: "error",
