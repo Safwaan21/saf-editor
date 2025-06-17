@@ -17,6 +17,9 @@ import {
   Save,
   SaveAll,
   RotateCcw,
+  Share2,
+  BarChart3,
+  Check,
 } from "lucide-react";
 import { motion } from "motion/react";
 import PyodideWorker from "./pyodideWorker.ts?worker";
@@ -29,6 +32,7 @@ import { AISetupDialog } from "./components/AISetupDialog";
 import { MonacoDiffViewer } from "./components/MonacoDiffViewer";
 import { Textarea } from "./components/ui/textarea";
 import FileExplorer from "./components/file-explorer";
+import { WorkspaceSerializer } from "./utils/workspaceSharing";
 
 export interface FileNode {
   id: string;
@@ -165,6 +169,16 @@ function App() {
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
     "saved"
   );
+  const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
+  const [workspacePopover, setWorkspacePopover] = useState<{
+    isOpen: boolean;
+    type: "stats" | null;
+    content: string;
+  }>({
+    isOpen: false,
+    type: null,
+    content: "",
+  });
 
   const isFullyLoaded = pyodideReady && editorReady;
 
@@ -547,28 +561,107 @@ function App() {
     return () => clearTimeout(autoSaveTimer);
   }, [fileTree, openTabs, autoSave]);
 
-  // Load files on startup
-  useEffect(() => {
-    const savedFiles = loadFromLocalStorage();
-    if (savedFiles && savedFiles.length > 0) {
-      // Clean up any duplicate entries that might have been created
-      const cleanedFiles = removeDuplicatesByName(savedFiles);
-      setFileTree(cleanedFiles);
-      // Open the first file
-      const firstFile = getAllFiles(cleanedFiles)[0];
-      if (firstFile) {
-        const newTab: EditorTab = {
-          fileId: firstFile.id,
-          fileName: firstFile.name,
-          content: firstFile.content || "",
-          isDirty: false,
-          originalContent: firstFile.content || "",
-        };
-        setOpenTabs([newTab]);
-        setActiveTabId(firstFile.id);
-        setSelectedFile(firstFile);
-      }
+  // Workspace sharing functions
+  const shareWorkspace = async () => {
+    try {
+      const url = await WorkspaceSerializer.createShareableURL(fileTree);
+      await navigator.clipboard.writeText(url);
+      setShareStatus("copied");
+
+      // Reset back to "Share" after 2 seconds
+      setTimeout(() => {
+        setShareStatus("idle");
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to share workspace:", error);
+      // Could show a brief error state here if needed
     }
+  };
+
+  const getCompressionInfo = async () => {
+    try {
+      if (workspacePopover.isOpen) {
+        setWorkspacePopover({
+          ...workspacePopover,
+          isOpen: false,
+        });
+        return;
+      }
+
+      const stats = await WorkspaceSerializer.getCompressionStats(fileTree);
+
+      setWorkspacePopover({
+        isOpen: true,
+        type: "stats",
+        content:
+          `Compression Stats:\n` +
+          `Original: ${stats.originalSize} bytes\n` +
+          `Compressed: ${stats.compressedSize} bytes\n` +
+          `Ratio: ${stats.compressionRatio.toFixed(2)}x\n` +
+          `URL Length: ${stats.urlLength} chars`,
+      });
+    } catch (error) {
+      console.error("Failed to get compression stats:", error);
+      setWorkspacePopover({
+        isOpen: true,
+        type: "stats",
+        content: "Failed to get compression stats",
+      });
+    }
+  };
+
+  // Load files on startup (check URL first, then localStorage)
+  useEffect(() => {
+    const loadWorkspace = async () => {
+      try {
+        // First try to load from URL hash
+        const sharedWorkspace =
+          await WorkspaceSerializer.loadWorkspaceFromURL();
+        if (sharedWorkspace && sharedWorkspace.length > 0) {
+          setFileTree(sharedWorkspace);
+          const firstFile = getAllFiles(sharedWorkspace)[0];
+          if (firstFile) {
+            const newTab: EditorTab = {
+              fileId: firstFile.id,
+              fileName: firstFile.name,
+              content: firstFile.content || "",
+              isDirty: false,
+              originalContent: firstFile.content || "",
+            };
+            setOpenTabs([newTab]);
+            setActiveTabId(firstFile.id);
+            setSelectedFile(firstFile);
+          }
+          return; // Don't load from localStorage if we loaded from URL
+        }
+      } catch (error) {
+        console.error("Failed to load workspace from URL:", error);
+      }
+
+      // Fallback to localStorage
+      const savedFiles = loadFromLocalStorage();
+      if (savedFiles && savedFiles.length > 0) {
+        // Clean up any duplicate entries that might have been created
+        const cleanedFiles = removeDuplicatesByName(savedFiles);
+        setFileTree(cleanedFiles);
+        // Open the first file
+        const firstFile = getAllFiles(cleanedFiles)[0];
+        if (firstFile) {
+          const newTab: EditorTab = {
+            fileId: firstFile.id,
+            fileName: firstFile.name,
+            content: firstFile.content || "",
+            isDirty: false,
+            originalContent: firstFile.content || "",
+          };
+          setOpenTabs([newTab]);
+          setActiveTabId(firstFile.id);
+          setSelectedFile(firstFile);
+        }
+      }
+    };
+
+    loadWorkspace();
   }, []); // Only run on mount
 
   // Helper function to remove duplicate entries
@@ -1059,6 +1152,81 @@ function App() {
                 <RotateCcw className="w-4 h-4 mr-1" />
                 Reset
               </Button>
+
+              <Button
+                size="sm"
+                variant={shareStatus === "copied" ? "default" : "outline"}
+                onClick={shareWorkspace}
+                className="h-8 px-2"
+                title={
+                  shareStatus === "copied"
+                    ? "URL copied to clipboard!"
+                    : "Share workspace via URL"
+                }
+                disabled={shareStatus === "copied"}
+              >
+                {shareStatus === "copied" ? (
+                  <>
+                    <Check className="w-4 h-4 mr-1" />
+                    URL copied
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4 mr-1" />
+                    Copy URL
+                  </>
+                )}
+              </Button>
+
+              <Popover
+                open={
+                  workspacePopover.isOpen && workspacePopover.type === "stats"
+                }
+                onOpenChange={(open) =>
+                  !open &&
+                  setWorkspacePopover((prev) => ({ ...prev, isOpen: false }))
+                }
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={getCompressionInfo}
+                    className="h-8 px-2"
+                    title="View compression statistics"
+                  >
+                    <BarChart3 className="w-4 h-4 mr-1" />
+                    Stats
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-80 p-4"
+                  side="bottom"
+                  align="center"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-medium text-gray-200">
+                        Compression Statistics
+                      </h3>
+                      <button
+                        onClick={() =>
+                          setWorkspacePopover((prev) => ({
+                            ...prev,
+                            isOpen: false,
+                          }))
+                        }
+                        className="text-gray-400 hover:text-gray-200 text-lg leading-none"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="text-sm text-gray-300 whitespace-pre-line font-mono">
+                      {workspacePopover.content}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <Dialog>
