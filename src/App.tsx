@@ -594,7 +594,6 @@ function App() {
         isOpen: true,
         type: "stats",
         content:
-          `Compression Stats:\n` +
           `Original: ${stats.originalSize} bytes\n` +
           `Compressed: ${stats.compressedSize} bytes\n` +
           `Ratio: ${stats.compressionRatio.toFixed(2)}x\n` +
