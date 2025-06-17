@@ -23,6 +23,7 @@ interface FileExplorerProps {
   ) => void;
   onDeleteFile?: (fileId: string) => void;
   onRenameFile?: (fileId: string, newName: string) => void;
+  onMoveFile?: (fileId: string, targetFolderId: string | null) => void;
 }
 
 // Convert FileNode to TreeViewElement recursively
@@ -57,6 +58,7 @@ export default function FileExplorer({
   onCreateFile,
   onDeleteFile,
   onRenameFile,
+  onMoveFile,
 }: FileExplorerProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -64,6 +66,8 @@ export default function FileExplorer({
     selectedFileId || null
   );
   const explorerRef = useRef<HTMLDivElement>(null);
+  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [dragOverFileId, setDragOverFileId] = useState<string | null>(null);
 
   // Convert FileNode array to TreeViewElement array
   const treeElements = useMemo(
@@ -185,6 +189,75 @@ export default function FileExplorer({
     }
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, fileId: string) => {
+    console.log("Drag start:", fileId);
+    setDraggedFileId(fileId);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", fileId);
+  };
+
+  const handleDragOver = (
+    e: React.DragEvent,
+    nodeId: string,
+    nodeType: "file" | "folder"
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+
+    // Only allow dropping on folders or root
+    if (nodeType === "folder") {
+      setDragOverFileId(nodeId);
+    } else {
+      setDragOverFileId(null);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+    // Only clear drag over if we're actually leaving the target element
+    const relatedTarget = e.relatedTarget as Element;
+    const currentTarget = e.currentTarget as Element;
+
+    if (!currentTarget.contains(relatedTarget)) {
+      setDragOverFileId(null);
+    }
+  };
+
+  const handleDrop = (
+    e: React.DragEvent,
+    targetNodeId: string,
+    targetNodeType: "file" | "folder"
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Drop event:", { targetNodeId, targetNodeType });
+    setDragOverFileId(null);
+
+    const draggedId = e.dataTransfer.getData("text/plain");
+    console.log("Dragged ID:", draggedId, "Target ID:", targetNodeId);
+
+    if (!draggedId || draggedId === targetNodeId || !onMoveFile) {
+      console.log("Drop cancelled - invalid conditions");
+      return;
+    }
+
+    // Can only drop on folders
+    if (targetNodeType === "folder") {
+      console.log("Calling onMoveFile:", draggedId, "->", targetNodeId);
+      onMoveFile(draggedId, targetNodeId);
+    }
+
+    setDraggedFileId(null);
+  };
+
+  const handleDragEnd = () => {
+    console.log("Drag end");
+    setDraggedFileId(null);
+    setDragOverFileId(null);
+  };
+
   // Render tree nodes recursively
   const renderTreeNodes = (nodes: FileNode[]): ReactElement[] => {
     return nodes.map((node) => {
@@ -207,14 +280,27 @@ export default function FileExplorer({
                 />
               </div>
             ) : (
-              <File
-                value={node.name}
-                isSelect={selectedFileId === node.id}
-                onClick={() => handleFileClick(node)}
-                tabIndex={0}
+              <div
+                draggable
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  handleDragStart(e, node.id);
+                }}
+                onDragEnd={(e) => {
+                  e.stopPropagation();
+                  handleDragEnd();
+                }}
+                className={`${draggedFileId === node.id ? "opacity-50" : ""}`}
               >
-                {node.name}
-              </File>
+                <File
+                  value={node.name}
+                  isSelect={selectedFileId === node.id}
+                  onClick={() => handleFileClick(node)}
+                  tabIndex={0}
+                >
+                  {node.name}
+                </File>
+              </div>
             )}
           </div>
         );
@@ -237,14 +323,43 @@ export default function FileExplorer({
                 />
               </div>
             ) : (
-              <Folder
-                value={node.name}
-                element={node.name}
-                isSelectable={true}
-                onClick={() => setFocusedFileId(node.id)}
+              <div
+                draggable
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  handleDragStart(e, node.id);
+                }}
+                onDragOver={(e) => {
+                  e.stopPropagation();
+                  handleDragOver(e, node.id, "folder");
+                }}
+                onDragLeave={(e) => {
+                  e.stopPropagation();
+                  handleDragLeave(e);
+                }}
+                onDrop={(e) => {
+                  e.stopPropagation();
+                  handleDrop(e, node.id, "folder");
+                }}
+                onDragEnd={(e) => {
+                  e.stopPropagation();
+                  handleDragEnd();
+                }}
+                className={`${draggedFileId === node.id ? "opacity-50" : ""} ${
+                  dragOverFileId === node.id
+                    ? "bg-blue-500/20 border-blue-500 border-2 border-dashed rounded"
+                    : ""
+                }`}
               >
-                {node.children && renderTreeNodes(node.children)}
-              </Folder>
+                <Folder
+                  value={node.name}
+                  element={node.name}
+                  isSelectable={true}
+                  onClick={() => setFocusedFileId(node.id)}
+                >
+                  {node.children && renderTreeNodes(node.children)}
+                </Folder>
+              </div>
             )}
           </div>
         );
@@ -284,10 +399,31 @@ export default function FileExplorer({
       {/* Instructions */}
       <div className="p-2 text-xs text-gray-500 border-b border-gray-700">
         <div>↑↓: Navigate • Enter: Open/Rename • F2: Rename • Del: Delete</div>
+        <div>Drag files/folders to move them</div>
       </div>
 
       {/* File Tree */}
-      <div className="flex-1 overflow-auto" tabIndex={0}>
+      <div
+        className="flex-1 overflow-auto"
+        tabIndex={0}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          console.log("Root drop event");
+          const draggedId = e.dataTransfer.getData("text/plain");
+          console.log("Root drop - draggedId:", draggedId);
+          if (draggedId && onMoveFile) {
+            console.log("Calling onMoveFile for root drop");
+            // Drop to root directory
+            onMoveFile(draggedId, null);
+          }
+          setDraggedFileId(null);
+          setDragOverFileId(null);
+        }}
+      >
         <Tree
           className="h-full p-2"
           initialSelectedId={selectedFileId}

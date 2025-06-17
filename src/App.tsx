@@ -464,6 +464,70 @@ function App() {
     });
   };
 
+  const moveFile = (fileId: string, targetFolderId: string | null) => {
+    console.log("moveFile called:", { fileId, targetFolderId });
+
+    // Find the file to move
+    const fileToMove = findFileById(fileTree, fileId);
+    if (!fileToMove) {
+      console.log("File to move not found:", fileId);
+      return;
+    }
+
+    console.log("File to move:", fileToMove);
+
+    // Prevent moving a folder into itself or its descendants
+    if (fileToMove.type === "folder" && targetFolderId) {
+      const isDescendant = (nodeId: string, searchIn: FileNode[]): boolean => {
+        for (const node of searchIn) {
+          if (node.id === nodeId) return true;
+          if (node.children && isDescendant(nodeId, node.children)) return true;
+        }
+        return false;
+      };
+
+      if (
+        fileToMove.children &&
+        isDescendant(targetFolderId, fileToMove.children)
+      ) {
+        console.log("Cannot move folder into itself");
+        alert("Cannot move a folder into itself or its descendant folders.");
+        return;
+      }
+    }
+
+    // If targetFolderId is provided, make sure it's actually a folder
+    if (targetFolderId) {
+      const targetFolder = findFileById(fileTree, targetFolderId);
+      if (!targetFolder || targetFolder.type !== "folder") {
+        console.log("Target is not a valid folder:", targetFolder);
+        return;
+      }
+      console.log("Target folder:", targetFolder);
+    }
+
+    console.log("Before move - current tree:", fileTree);
+
+    // Remove file from its current location
+    const treeWithoutFile = removeFromTree(fileTree, fileId);
+    console.log("Tree without file:", treeWithoutFile);
+
+    // Add file to new location
+    let newTree: FileNode[];
+    if (targetFolderId === null) {
+      // Move to root
+      newTree = [...treeWithoutFile, fileToMove];
+      console.log("Moving to root, new tree:", newTree);
+    } else {
+      // Move to specific folder
+      newTree = addToFolder(treeWithoutFile, targetFolderId, fileToMove);
+      console.log("Moving to folder, new tree:", newTree);
+    }
+
+    setFileTree(newTree);
+    console.log("moveFile completed");
+  };
+
   // Save functionality
   const saveToLocalStorage = (fileTree: FileNode[]) => {
     try {
@@ -1336,6 +1400,7 @@ function App() {
             onCreateFile={createFile}
             onDeleteFile={deleteFile}
             onRenameFile={renameFile}
+            onMoveFile={moveFile}
           />
 
           <div className="flex-1 flex flex-col">
