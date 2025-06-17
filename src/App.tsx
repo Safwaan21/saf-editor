@@ -33,6 +33,8 @@ import { MonacoDiffViewer } from "./components/MonacoDiffViewer";
 import { Textarea } from "./components/ui/textarea";
 import FileExplorer from "./components/file-explorer";
 import { WorkspaceSerializer } from "./utils/workspaceSharing";
+import { BlurFade } from "./components/magicui/blur-fade";
+import { ShineBorder } from "./components/magicui/shine-border";
 
 export interface FileNode {
   id: string;
@@ -179,6 +181,7 @@ function App() {
     type: null,
     content: "",
   });
+  const [titleState, setTitleState] = useState<"full" | "abbreviated">("full");
 
   const isFullyLoaded = pyodideReady && editorReady;
 
@@ -193,6 +196,17 @@ function App() {
       initializeModel(aiConfig.webllmModel);
     }
   }, [aiConfig, llmState.isInitialized, llmState.isLoading, initializeModel]);
+
+  // Trigger title transition after initial animations complete
+  useEffect(() => {
+    if (isFullyLoaded) {
+      const timer = setTimeout(() => {
+        setTitleState("abbreviated");
+      }, 6000); // Wait for initial animations + extra time for user to ease into the app
+
+      return () => clearTimeout(timer);
+    }
+  }, [isFullyLoaded]);
 
   // Switch to stderr tab when there's an error, or back to stdout on successful runs
   useEffect(() => {
@@ -1095,10 +1109,61 @@ function App() {
       >
         {/* Header */}
         <div className="flex flex-col md:flex-row items-center justify-between w-full px-4 py-2 border-b border-gray-600 bg-[#1e1e1e]">
-          <h1 className="md:text-xl text-2xl font-normal text-white">
-            Saf's Editor
-          </h1>
-          <div className="flex-1 flex justify-end items-center gap-2">
+          {isFullyLoaded && (
+            <BlurFade delay={0.8} duration={0.6}>
+              <h1 className="md:text-xl text-2xl font-normal text-white p-2 rounded-lg">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 2.0, duration: 0.9 }}
+                  className="rounded-lg"
+                >
+                  <ShineBorder shineColor={["#3b82f6", "#8b5cf6", "#06b6d4"]} />
+                </motion.div>
+                <motion.span
+                  initial={false}
+                  animate={{
+                    width: titleState === "full" ? "auto" : "3rem",
+                  }}
+                  transition={{
+                    duration: 0.6,
+                    ease: "easeInOut",
+                    delay: titleState === "abbreviated" ? 0.4 : 0, // Delay shrinking until text fades out
+                  }}
+                  className="relative inline-block whitespace-nowrap"
+                >
+                  <motion.span
+                    animate={{
+                      opacity: titleState === "full" ? 1 : 0,
+                    }}
+                    transition={{
+                      duration: 0.3,
+                      ease: "easeInOut",
+                      delay: titleState === "abbreviated" ? 0 : 0, // Fade out immediately when transitioning
+                    }}
+                    className="inline-block"
+                  >
+                    Saf's Editor
+                  </motion.span>
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{
+                      opacity: titleState === "abbreviated" ? 1 : 0,
+                    }}
+                    transition={{
+                      duration: 0.3,
+                      ease: "easeInOut",
+                      delay: titleState === "abbreviated" ? 1.0 : 0, // Appear after text fades and border shrinks
+                    }}
+                    className="absolute inset-0 flex items-center justify-center"
+                  >
+                    SE
+                  </motion.span>
+                </motion.span>
+              </h1>
+            </BlurFade>
+          )}
+          <div className="flex flex-1  justify-end items-center gap-2">
             {/* Save Status & Buttons */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-400">
