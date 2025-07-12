@@ -347,7 +347,7 @@ export default function FileExplorer({
                 }}
                 className={`${draggedFileId === node.id ? "opacity-50" : ""} ${
                   dragOverFileId === node.id
-                    ? "bg-blue-500/20 border-blue-500 border-2 border-dashed rounded"
+                    ? "bg-neutral-500/20 border-neutral-500 border-2 p-1 border-dashed rounded"
                     : ""
                 }`}
               >

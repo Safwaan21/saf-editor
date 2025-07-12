@@ -831,12 +831,217 @@ function App() {
   };
 
   const handleEditorMount = (editor: editor.IStandaloneCodeEditor) => {
+    console.log("=== EDITOR MOUNTED ===");
     setEditorReady(true);
     editorRef.current = editor;
+
+    console.log("Editor instance:", editor);
+    console.log("Editor model:", editor.getModel());
+    console.log("Editor language:", editor.getModel()?.getLanguageId());
+
     editor.addCommand(
       monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
       handleToggleCommandK
     );
+
+    // Skeleton completion provider to inspect available data
+    console.log("Registering completion provider...");
+    const completionProvider = monaco.languages.registerCompletionItemProvider(
+      "python",
+      {
+        triggerCharacters: [".", " ", "(", "["],
+        provideCompletionItems: async (model, position, context, token) => {
+          console.log("=== COMPLETION PROVIDER CALLED ===");
+
+          // 1. Model information
+          console.log("Model:", {
+            uri: model.uri.toString(),
+            languageId: model.getLanguageId(),
+            lineCount: model.getLineCount(),
+            valueLength: model.getValue().length,
+          });
+
+          // 2. Position information
+          console.log("Position:", {
+            lineNumber: position.lineNumber,
+            column: position.column,
+          });
+
+          // 3. Context information
+          console.log("Context:", {
+            triggerKind: context.triggerKind, // 0=Invoke, 1=TriggerCharacter, 2=TriggerForIncompleteCompletions
+            triggerCharacter: context.triggerCharacter,
+          });
+
+          // 4. Current line and surrounding text
+          const currentLine = model.getLineContent(position.lineNumber);
+          const textBeforeCursor = currentLine.substring(
+            0,
+            position.column - 1
+          );
+          const textAfterCursor = currentLine.substring(position.column - 1);
+
+          console.log("Current Line Context:", {
+            fullLine: currentLine,
+            beforeCursor: textBeforeCursor,
+            afterCursor: textAfterCursor,
+          });
+
+          // 5. Full text and text until cursor
+          const fullText = model.getValue();
+          const textUntilPosition = model.getValueInRange({
+            startLineNumber: 1,
+            startColumn: 1,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
+          });
+
+          console.log("Full Context:", {
+            fullTextLength: fullText.length,
+            textUntilCursorLength: textUntilPosition.length,
+            lastChars: textUntilPosition.slice(-50), // Last 50 chars for context
+          });
+
+          // 6. Word at position
+          const wordAtPosition = model.getWordAtPosition(position);
+          console.log("Word at Position:", wordAtPosition);
+
+          // 7. Surrounding lines for better context
+          const startLine = Math.max(1, position.lineNumber - 3);
+          const endLine = Math.min(
+            model.getLineCount(),
+            position.lineNumber + 3
+          );
+          const surroundingText = model.getValueInRange({
+            startLineNumber: startLine,
+            startColumn: 1,
+            endLineNumber: endLine,
+            endColumn: model.getLineMaxColumn(endLine),
+          });
+
+          console.log("Surrounding Context:", {
+            lines: `${startLine}-${endLine}`,
+            text: surroundingText,
+          });
+
+          // 8. Token information (for cancellation)
+          console.log("Token:", {
+            isCancellationRequested: token.isCancellationRequested,
+          });
+
+          // Example: Simple completion based on what we know
+          const suggestions = [];
+
+          // If typing after a dot, suggest some mock methods
+          if (textBeforeCursor.endsWith(".")) {
+            suggestions.push(
+              {
+                label: "mock_method()",
+                kind: monaco.languages.CompletionItemKind.Method,
+                insertText: "mock_method()",
+                documentation: "A mock method suggestion",
+                detail: "Mock method with no arguments",
+                range: {
+                  startLineNumber: position.lineNumber,
+                  endLineNumber: position.lineNumber,
+                  startColumn: position.column,
+                  endColumn: position.column,
+                },
+              },
+              {
+                label: "another_method",
+                kind: monaco.languages.CompletionItemKind.Property,
+                insertText: "another_method",
+                documentation: "Another mock suggestion",
+                detail: "Property or attribute",
+                range: {
+                  startLineNumber: position.lineNumber,
+                  endLineNumber: position.lineNumber,
+                  startColumn: position.column,
+                  endColumn: position.column,
+                },
+              }
+            );
+          }
+
+          // If typing a variable name, suggest some mock variables
+          if (wordAtPosition && !textBeforeCursor.endsWith(".")) {
+            suggestions.push({
+              label: "mock_variable",
+              kind: monaco.languages.CompletionItemKind.Variable,
+              insertText: "mock_variable",
+              documentation: "A mock variable",
+              detail: "str",
+              range: {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: wordAtPosition.startColumn,
+                endColumn: wordAtPosition.endColumn,
+              },
+            });
+          }
+
+          console.log("Returning suggestions:", suggestions);
+          console.log("=== END COMPLETION PROVIDER ===");
+
+          return { suggestions };
+        },
+      }
+    );
+
+    console.log("Completion provider registered:", completionProvider);
+
+    // Cleanup on dispose
+    editor.onDidDispose(() => {
+      console.log("Editor disposed, cleaning up completion provider");
+      completionProvider.dispose();
+    });
+
+    // Test manual completion trigger
+    console.log("Setting up manual completion test...");
+    setTimeout(() => {
+      console.log("Testing manual completion trigger...");
+      const result = editor.trigger("test", "editor.action.triggerSuggest", {});
+      console.log("Manual trigger result:", result);
+    }, 2000);
+
+    // Add some debugging for key events
+    editor.onDidChangeModelContent((e) => {
+      console.log("Model content changed:", e);
+      const model = editor.getModel();
+      if (model) {
+        console.log("Current content:", model.getValue());
+        console.log("Current position:", editor.getPosition());
+      }
+    });
+
+    editor.onDidChangeCursorPosition((e) => {
+      console.log("Cursor position changed:", e);
+    });
+
+    // Test if we can trigger suggestions manually
+    setTimeout(() => {
+      console.log("Testing suggest action directly...");
+      editor.focus();
+      const model = editor.getModel();
+      const position = editor.getPosition();
+      console.log("Current model:", model);
+      console.log("Current position:", position);
+
+      // Try to trigger suggestion action
+      const action = editor.getAction("editor.action.triggerSuggest");
+      console.log("Suggest action:", action);
+      if (action) {
+        action
+          .run()
+          .then((result: unknown) => {
+            console.log("Suggest action result:", result);
+          })
+          .catch((error: unknown) => {
+            console.log("Error running suggest action:", error);
+          });
+      }
+    }, 3000);
   };
 
   // Get cursor screen position for popover
@@ -1443,7 +1648,46 @@ function App() {
                       ?.content || ""
                   }
                   theme="vs-dark"
-                  options={{ minimap: { enabled: false } }}
+                  options={{
+                    minimap: { enabled: false },
+                    quickSuggestions: {
+                      other: true,
+                      comments: true,
+                      strings: true,
+                    },
+                    suggestOnTriggerCharacters: true,
+                    acceptSuggestionOnCommitCharacter: true,
+                    acceptSuggestionOnEnter: "on",
+                    tabCompletion: "on",
+                    wordBasedSuggestions: "allDocuments",
+                    // Enable all suggestion types
+                    suggest: {
+                      showWords: true,
+                      showSnippets: true,
+                      showKeywords: true,
+                      showFunctions: true,
+                      showVariables: true,
+                      showClasses: true,
+                      showModules: true,
+                      showProperties: true,
+                      showMethods: true,
+                      showValues: true,
+                      showEnums: true,
+                      showConstants: true,
+                      showConstructors: true,
+                      showInterfaces: true,
+                      showStructs: true,
+                      showEvents: true,
+                      showOperators: true,
+                      showTypeParameters: true,
+                      showFolders: true,
+                      showFiles: true,
+                      showReferences: true,
+                      showUsers: true,
+                      showIssues: true,
+                      showColors: true,
+                    },
+                  }}
                   onChange={(value) => {
                     setCode(value || "");
                     updateTabContent(activeTabId, value || "");

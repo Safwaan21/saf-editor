@@ -39,6 +39,12 @@ export const WEBLLM_MODELS: WebLLMModel[] = [
     description: "Best balance of size and capability",
   },
   {
+    id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+    name: "Llama 3.2 1B",
+    size: "1.0 GB",
+    description: "Meta's efficient 1B parameter model",
+  },
+  {
     id: "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
     name: "Qwen2.5 Coder 0.5B",
     size: "945 MB",

@@ -23,9 +23,7 @@ CRITICAL RULES:
 
 You will receive code context and a request. Respond with ONLY the ${language} code that addresses the request.`;
 
-      const userPrompt = `Code Context:
-${codeContext}
-
+      const userPrompt = `
 Request: ${prompt}
 
 ${language.toUpperCase()} CODE ONLY (no markdown, no explanations):`;
