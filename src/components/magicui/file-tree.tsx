@@ -215,15 +215,18 @@ const Folder = forwardRef<
   HTMLDivElement,
   FolderProps & React.HTMLAttributes<HTMLDivElement>
 >(
-  ({
-    className,
-    element,
-    value,
-    isSelectable = true,
-    isSelect,
-    children,
-    ...props
-  }) => {
+  (
+    {
+      className,
+      element,
+      value,
+      isSelectable = true,
+      isSelect,
+      children,
+      ...props
+    },
+    ref
+  ) => {
     const {
       direction,
       handleExpand,
@@ -237,6 +240,7 @@ const Folder = forwardRef<
     return (
       <AccordionPrimitive.Item
         {...props}
+        ref={ref}
         value={value}
         className="relative h-full overflow-hidden"
       >

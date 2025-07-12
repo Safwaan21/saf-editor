@@ -1,9 +1,10 @@
 import "./App.css";
-import { Editor } from "@monaco-editor/react";
+import { Editor, type Monaco } from "@monaco-editor/react";
 import { useState, useEffect, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Button } from "./components/ui/button";
 import { Dialog, DialogTrigger } from "./components/ui/dialog";
+import * as monaco from "monaco-editor";
 import {
   Popover,
   PopoverContent,
@@ -24,11 +25,11 @@ import {
 import { motion } from "motion/react";
 import PyodideWorker from "./pyodideWorker.ts?worker";
 import type { editor } from "monaco-editor";
-import * as monaco from "monaco-editor";
 import { useWebLLM } from "./hooks/useWebLLM";
 import { useAPIProvider } from "./hooks/useAPIProvider";
 import { useAIConfig } from "./hooks/useAIConfig";
 import { AISetupDialog } from "./components/AISetupDialog";
+import { MonacoPyrightProvider } from "monaco-pyright-lsp";
 import { MonacoDiffViewer } from "./components/MonacoDiffViewer";
 import { Textarea } from "./components/ui/textarea";
 import FileExplorer from "./components/file-explorer";
@@ -60,7 +61,7 @@ const initialFileTree: FileNode[] = [
     name: "main.py",
     type: "file",
     content:
-      "print('Hello from main.py!')\n\n# Import from utils folder\nfrom utils.helpers import helper_function\nfrom utils.constants import PI, E\n\nprint('Calling helper function:')\nprint(helper_function())\n\nprint(f'\\nConstants from utils:')\nprint(f'PI = {PI}')\nprint(f'E = {E}')\n\nprint('\\nMulti-file execution works!')",
+      '# Example Python code with type hints for better completions\nimport json\nfrom typing import List, Dict, Optional\n\n# Import from utils folder\nfrom utils.helpers import helper_function\nfrom utils.constants import PI, E\n\ndef greet(name: str) -> str:\n    """Greet a person by name."""\n    return f"Hello, {name}!"\n\ndef calculate_area(radius: float) -> float:\n    """Calculate the area of a circle."""\n    return PI * radius ** 2\n\ndef process_data(data: List[Dict[str, str]]) -> Optional[str]:\n    """Process a list of dictionaries."""\n    if not data:\n        return None\n    return json.dumps(data, indent=2)\n\n# Try typing these to see completions:\n# json.\n# greet(\n# calculate_area(\n# data = [{"name": "John"}]\n# process_data(\n\nprint(\'Hello from main.py!\')\nprint(\'Calling helper function:\')\nprint(helper_function())\n\nprint(f\'\\nConstants from utils:\')\nprint(f\'PI = {PI}\')\nprint(f\'E = {E}\')\n\nprint(\'\\nMulti-file execution works!\')',
   },
   {
     id: "2",
@@ -123,6 +124,7 @@ function App() {
   const [pyodideReady, setPyodideReady] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [pyodideError, setPyodideError] = useState("");
+  const pyrightProviderRef = useRef<MonacoPyrightProvider | null>(null);
   // const [executionTime, setExecutionTime] = useState(0);
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
@@ -465,16 +467,16 @@ function App() {
   };
 
   const moveFile = (fileId: string, targetFolderId: string | null) => {
-    console.log("moveFile called:", { fileId, targetFolderId });
+    // console.log("moveFile called:", { fileId, targetFolderId });
 
     // Find the file to move
     const fileToMove = findFileById(fileTree, fileId);
     if (!fileToMove) {
-      console.log("File to move not found:", fileId);
+      // console.log("File to move not found:", fileId);
       return;
     }
 
-    console.log("File to move:", fileToMove);
+    // console.log("File to move:", fileToMove);
 
     // Prevent moving a folder into itself or its descendants
     if (fileToMove.type === "folder" && targetFolderId) {
@@ -490,7 +492,7 @@ function App() {
         fileToMove.children &&
         isDescendant(targetFolderId, fileToMove.children)
       ) {
-        console.log("Cannot move folder into itself");
+        // console.log("Cannot move folder into itself");
         alert("Cannot move a folder into itself or its descendant folders.");
         return;
       }
@@ -500,32 +502,32 @@ function App() {
     if (targetFolderId) {
       const targetFolder = findFileById(fileTree, targetFolderId);
       if (!targetFolder || targetFolder.type !== "folder") {
-        console.log("Target is not a valid folder:", targetFolder);
+        // console.log("Target is not a valid folder:", targetFolder);
         return;
       }
-      console.log("Target folder:", targetFolder);
+      // console.log("Target folder:", targetFolder);
     }
 
-    console.log("Before move - current tree:", fileTree);
+    // console.log("Before move - current tree:", fileTree);
 
     // Remove file from its current location
     const treeWithoutFile = removeFromTree(fileTree, fileId);
-    console.log("Tree without file:", treeWithoutFile);
+    // console.log("Tree without file:", treeWithoutFile);
 
     // Add file to new location
     let newTree: FileNode[];
     if (targetFolderId === null) {
       // Move to root
       newTree = [...treeWithoutFile, fileToMove];
-      console.log("Moving to root, new tree:", newTree);
+      // console.log("Moving to root, new tree:", newTree);
     } else {
       // Move to specific folder
       newTree = addToFolder(treeWithoutFile, targetFolderId, fileToMove);
-      console.log("Moving to folder, new tree:", newTree);
+      // console.log("Moving to folder, new tree:", newTree);
     }
 
     setFileTree(newTree);
-    console.log("moveFile completed");
+    // console.log("moveFile completed");
   };
 
   // Save functionality
@@ -830,7 +832,10 @@ function App() {
     setFileTree((prev) => updateFileContent(prev, fileId, content));
   };
 
-  const handleEditorMount = (editor: editor.IStandaloneCodeEditor) => {
+  const handleEditorMount = async (
+    editor: editor.IStandaloneCodeEditor,
+    monaco: Monaco
+  ) => {
     console.log("=== EDITOR MOUNTED ===");
     setEditorReady(true);
     editorRef.current = editor;
@@ -844,204 +849,18 @@ function App() {
       handleToggleCommandK
     );
 
-    // Skeleton completion provider to inspect available data
-    console.log("Registering completion provider...");
-    const completionProvider = monaco.languages.registerCompletionItemProvider(
-      "python",
-      {
-        triggerCharacters: [".", " ", "(", "["],
-        provideCompletionItems: async (model, position, context, token) => {
-          console.log("=== COMPLETION PROVIDER CALLED ===");
-
-          // 1. Model information
-          console.log("Model:", {
-            uri: model.uri.toString(),
-            languageId: model.getLanguageId(),
-            lineCount: model.getLineCount(),
-            valueLength: model.getValue().length,
-          });
-
-          // 2. Position information
-          console.log("Position:", {
-            lineNumber: position.lineNumber,
-            column: position.column,
-          });
-
-          // 3. Context information
-          console.log("Context:", {
-            triggerKind: context.triggerKind, // 0=Invoke, 1=TriggerCharacter, 2=TriggerForIncompleteCompletions
-            triggerCharacter: context.triggerCharacter,
-          });
-
-          // 4. Current line and surrounding text
-          const currentLine = model.getLineContent(position.lineNumber);
-          const textBeforeCursor = currentLine.substring(
-            0,
-            position.column - 1
-          );
-          const textAfterCursor = currentLine.substring(position.column - 1);
-
-          console.log("Current Line Context:", {
-            fullLine: currentLine,
-            beforeCursor: textBeforeCursor,
-            afterCursor: textAfterCursor,
-          });
-
-          // 5. Full text and text until cursor
-          const fullText = model.getValue();
-          const textUntilPosition = model.getValueInRange({
-            startLineNumber: 1,
-            startColumn: 1,
-            endLineNumber: position.lineNumber,
-            endColumn: position.column,
-          });
-
-          console.log("Full Context:", {
-            fullTextLength: fullText.length,
-            textUntilCursorLength: textUntilPosition.length,
-            lastChars: textUntilPosition.slice(-50), // Last 50 chars for context
-          });
-
-          // 6. Word at position
-          const wordAtPosition = model.getWordAtPosition(position);
-          console.log("Word at Position:", wordAtPosition);
-
-          // 7. Surrounding lines for better context
-          const startLine = Math.max(1, position.lineNumber - 3);
-          const endLine = Math.min(
-            model.getLineCount(),
-            position.lineNumber + 3
-          );
-          const surroundingText = model.getValueInRange({
-            startLineNumber: startLine,
-            startColumn: 1,
-            endLineNumber: endLine,
-            endColumn: model.getLineMaxColumn(endLine),
-          });
-
-          console.log("Surrounding Context:", {
-            lines: `${startLine}-${endLine}`,
-            text: surroundingText,
-          });
-
-          // 8. Token information (for cancellation)
-          console.log("Token:", {
-            isCancellationRequested: token.isCancellationRequested,
-          });
-
-          // Example: Simple completion based on what we know
-          const suggestions = [];
-
-          // If typing after a dot, suggest some mock methods
-          if (textBeforeCursor.endsWith(".")) {
-            suggestions.push(
-              {
-                label: "mock_method()",
-                kind: monaco.languages.CompletionItemKind.Method,
-                insertText: "mock_method()",
-                documentation: "A mock method suggestion",
-                detail: "Mock method with no arguments",
-                range: {
-                  startLineNumber: position.lineNumber,
-                  endLineNumber: position.lineNumber,
-                  startColumn: position.column,
-                  endColumn: position.column,
-                },
-              },
-              {
-                label: "another_method",
-                kind: monaco.languages.CompletionItemKind.Property,
-                insertText: "another_method",
-                documentation: "Another mock suggestion",
-                detail: "Property or attribute",
-                range: {
-                  startLineNumber: position.lineNumber,
-                  endLineNumber: position.lineNumber,
-                  startColumn: position.column,
-                  endColumn: position.column,
-                },
-              }
-            );
-          }
-
-          // If typing a variable name, suggest some mock variables
-          if (wordAtPosition && !textBeforeCursor.endsWith(".")) {
-            suggestions.push({
-              label: "mock_variable",
-              kind: monaco.languages.CompletionItemKind.Variable,
-              insertText: "mock_variable",
-              documentation: "A mock variable",
-              detail: "str",
-              range: {
-                startLineNumber: position.lineNumber,
-                endLineNumber: position.lineNumber,
-                startColumn: wordAtPosition.startColumn,
-                endColumn: wordAtPosition.endColumn,
-              },
-            });
-          }
-
-          console.log("Returning suggestions:", suggestions);
-          console.log("=== END COMPLETION PROVIDER ===");
-
-          return { suggestions };
-        },
-      }
-    );
-
-    console.log("Completion provider registered:", completionProvider);
-
-    // Cleanup on dispose
-    editor.onDidDispose(() => {
-      console.log("Editor disposed, cleaning up completion provider");
-      completionProvider.dispose();
-    });
-
-    // Test manual completion trigger
-    console.log("Setting up manual completion test...");
-    setTimeout(() => {
-      console.log("Testing manual completion trigger...");
-      const result = editor.trigger("test", "editor.action.triggerSuggest", {});
-      console.log("Manual trigger result:", result);
-    }, 2000);
-
     // Add some debugging for key events
-    editor.onDidChangeModelContent((e) => {
-      console.log("Model content changed:", e);
+    editor.onDidChangeModelContent(() => {
       const model = editor.getModel();
       if (model) {
-        console.log("Current content:", model.getValue());
-        console.log("Current position:", editor.getPosition());
+        // console.log("Current content:", model.getValue());
+        // console.log("Current position:", editor.getPosition());
       }
     });
 
     editor.onDidChangeCursorPosition((e) => {
-      console.log("Cursor position changed:", e);
+      // console.log("Cursor position changed:", e);
     });
-
-    // Test if we can trigger suggestions manually
-    setTimeout(() => {
-      console.log("Testing suggest action directly...");
-      editor.focus();
-      const model = editor.getModel();
-      const position = editor.getPosition();
-      console.log("Current model:", model);
-      console.log("Current position:", position);
-
-      // Try to trigger suggestion action
-      const action = editor.getAction("editor.action.triggerSuggest");
-      console.log("Suggest action:", action);
-      if (action) {
-        action
-          .run()
-          .then((result: unknown) => {
-            console.log("Suggest action result:", result);
-          })
-          .catch((error: unknown) => {
-            console.log("Error running suggest action:", error);
-          });
-      }
-    }, 3000);
   };
 
   // Get cursor screen position for popover
@@ -1220,9 +1039,7 @@ function App() {
   };
 
   useEffect(() => {
-    console.log("init");
     workerRef.current = new PyodideWorker();
-    console.log(workerRef.current);
     workerRef.current.postMessage({ type: "init" });
 
     workerRef.current.onmessage = (event: MessageEvent) => {
@@ -1273,6 +1090,18 @@ function App() {
     setStartHeight(terminalTabHeight);
     e.preventDefault();
   };
+
+  useEffect(() => {
+    const initializePyright = async () => {
+      if (!editorRef.current) return;
+      const pyrightProvider = new MonacoPyrightProvider();
+      await pyrightProvider.init(monaco);
+      pyrightProviderRef.current = pyrightProvider;
+      await pyrightProvider.setupDiagnostics(editorRef.current);
+    };
+
+    initializePyright();
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -1563,7 +1392,7 @@ function App() {
             </div>
 
             <Dialog>
-              <DialogTrigger>
+              <DialogTrigger asChild>
                 <Button variant="outline">
                   {(aiConfig.type === "webllm" && llmState.isInitialized) ||
                   (aiConfig.type === "api" && aiConfig.apiKey) ? (
