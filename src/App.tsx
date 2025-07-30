@@ -155,6 +155,7 @@ function App() {
     state: llmState,
     initializeModel,
     generateCodeSuggestion: webllmGenerateCode,
+    cancelInitializeModel,
   } = useWebLLM();
   const apiProvider = useAPIProvider();
   const { config: aiConfig, saveConfig: saveAiConfig } = useAIConfig();
@@ -596,7 +597,6 @@ function App() {
 
   const resetToDefault = () => {
     if (
-      hasUnsavedChanges() &&
       !confirm(
         "Are you sure you want to reset to default? All unsaved changes will be lost."
       )
@@ -856,10 +856,6 @@ function App() {
         // console.log("Current content:", model.getValue());
         // console.log("Current position:", editor.getPosition());
       }
-    });
-
-    editor.onDidChangeCursorPosition((e) => {
-      // console.log("Cursor position changed:", e);
     });
   };
 
@@ -1276,13 +1272,17 @@ function App() {
                 size="sm"
                 variant="ghost"
                 onClick={saveCurrentFile}
-                disabled={!activeTabId || saveStatus === "saving"}
+                disabled={
+                  !activeTabId ||
+                  saveStatus === "saving" ||
+                  !hasUnsavedChanges()
+                }
                 className="h-8 px-2"
               >
                 <Save className="w-4 h-4 mr-1" />
                 Save
               </Button>
-
+              {/* 
               <Button
                 size="sm"
                 variant="ghost"
@@ -1292,9 +1292,9 @@ function App() {
               >
                 <SaveAll className="w-4 h-4 mr-1" />
                 Save All
-              </Button>
+              </Button> */}
 
-              <Button
+              {/* <Button
                 size="sm"
                 variant={autoSave ? "default" : "ghost"}
                 onClick={() => setAutoSave(!autoSave)}
@@ -1302,7 +1302,7 @@ function App() {
                 title={autoSave ? "Auto-save enabled" : "Auto-save disabled"}
               >
                 Auto
-              </Button>
+              </Button> */}
 
               <Button
                 size="sm"
@@ -1414,6 +1414,7 @@ function App() {
                 onInitializeWebLLM={initializeModel}
                 isWebLLMLoading={llmState.isLoading}
                 webLLMProgress={llmState.progress}
+                cancelInitializeModel={cancelInitializeModel}
               />
             </Dialog>
             <Button onClick={handleRunCode} variant="outline">

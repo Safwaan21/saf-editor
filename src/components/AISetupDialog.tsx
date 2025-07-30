@@ -12,7 +12,7 @@ import {
 } from "./ui/card";
 import { DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { Eye, EyeOff, Download, Zap, Cloud } from "lucide-react";
+import { Eye, EyeOff, Download, Zap, Cloud, X } from "lucide-react";
 import type { AIConfiguration, WebLLMModel, APIProvider } from "../types/ai";
 import { WEBLLM_MODELS, API_PROVIDERS } from "../types/ai";
 
@@ -22,6 +22,7 @@ interface AISetupDialogProps {
   onInitializeWebLLM: (modelId: string) => Promise<void>;
   isWebLLMLoading: boolean;
   webLLMProgress: string;
+  cancelInitializeModel: () => void;
 }
 
 export const AISetupDialog: React.FC<AISetupDialogProps> = ({
@@ -30,6 +31,7 @@ export const AISetupDialog: React.FC<AISetupDialogProps> = ({
   onInitializeWebLLM,
   isWebLLMLoading,
   webLLMProgress,
+  cancelInitializeModel,
 }) => {
   const [tempConfig, setTempConfig] = useState<AIConfiguration>(currentConfig);
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
@@ -122,6 +124,14 @@ export const AISetupDialog: React.FC<AISetupDialogProps> = ({
                     <span className="text-sm text-blue-800 dark:text-blue-200">
                       {webLLMProgress || "Loading model..."}
                     </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={cancelInitializeModel}
+                      className="ml-auto"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
               )}

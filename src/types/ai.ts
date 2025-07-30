@@ -33,12 +33,6 @@ export const WEBLLM_MODELS: WebLLMModel[] = [
     description: "Small but more capable than 135M",
   },
   {
-    id: "SmolLM2-1.7B-Instruct-q4f16_1-MLC",
-    name: "SmolLM2 1.7B",
-    size: "1.8 GB",
-    description: "Best balance of size and capability",
-  },
-  {
     id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
     name: "Llama 3.2 1B",
     size: "1.0 GB",

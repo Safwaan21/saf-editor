@@ -18,6 +18,19 @@ export const useWebLLM = () => {
 
   const engineRef = useRef<webllm.MLCEngineInterface | null>(null);
 
+  const cancelInitializeModel = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.unload();
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        isInitialized: false,
+        error: null,
+        progress: "",
+      }));
+    }
+  }, []);
+
   const initializeModel = useCallback(async (modelId?: string) => {
     const selectedModel = modelId || "SmolLM2-135M-Instruct-q0f16-MLC";
 
@@ -164,6 +177,7 @@ ${language.toUpperCase()} CODE ONLY (no markdown, no explanations):`;
 
   return {
     state,
+    cancelInitializeModel,
     initializeModel,
     generateCodeSuggestion,
   };
