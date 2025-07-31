@@ -16,7 +16,7 @@ import {
   LoaderCircle,
   X,
   Save,
-  SaveAll,
+  // SaveAll,
   RotateCcw,
   Share2,
   BarChart3,
@@ -33,6 +33,7 @@ import { MonacoPyrightProvider } from "monaco-pyright-lsp";
 import { MonacoDiffViewer } from "./components/MonacoDiffViewer";
 import { Textarea } from "./components/ui/textarea";
 import FileExplorer from "./components/file-explorer";
+import AgentChat from "./components/AgentChat";
 import { WorkspaceSerializer } from "./utils/workspaceSharing";
 import { BlurFade } from "./components/magicui/blur-fade";
 import { ShineBorder } from "./components/magicui/shine-border";
@@ -170,7 +171,7 @@ function App() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState("stdout");
-  const [autoSave, setAutoSave] = useState(true);
+  const [autoSave] = useState(true); // setAutoSave removed as unused
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
     "saved"
   );
@@ -185,6 +186,7 @@ function App() {
     content: "",
   });
   const [titleState, setTitleState] = useState<"full" | "abbreviated">("full");
+  const [showAgentChat, setShowAgentChat] = useState(false);
 
   const isFullyLoaded = pyodideReady && editorReady;
 
@@ -832,6 +834,52 @@ function App() {
     setFileTree((prev) => updateFileContent(prev, fileId, content));
   };
 
+  // Synchronized file tree updater that syncs changes with the editor
+  const updateFileTreeWithSync = (
+    updater: (prev: FileNode[]) => FileNode[]
+  ) => {
+    const oldFileTree = fileTree;
+    const newFileTree = updater(oldFileTree);
+
+    // Update the file tree
+    setFileTree(newFileTree);
+
+    // Check if any open tabs need to be updated
+    openTabs.forEach((tab) => {
+      const oldFile = findFileById(oldFileTree, tab.fileId);
+      const newFile = findFileById(newFileTree, tab.fileId);
+
+      if (oldFile && newFile && oldFile.content !== newFile.content) {
+        // File content changed - update the tab
+        setOpenTabs((prev) =>
+          prev.map((prevTab) =>
+            prevTab.fileId === tab.fileId
+              ? {
+                  ...prevTab,
+                  content: newFile.content || "",
+                  originalContent: newFile.content || "",
+                  isDirty: false, // Reset dirty state since this is a tool change
+                }
+              : prevTab
+          )
+        );
+
+        // If this is the currently active tab, update the editor content
+        if (tab.fileId === activeTabId) {
+          setCode(newFile.content || "");
+
+          // Also update the Monaco editor model if it exists
+          if (editorRef.current) {
+            const model = editorRef.current.getModel();
+            if (model) {
+              model.setValue(newFile.content || "");
+            }
+          }
+        }
+      }
+    });
+  };
+
   const handleEditorMount = async (
     editor: editor.IStandaloneCodeEditor,
     monaco: Monaco
@@ -1422,6 +1470,13 @@ function App() {
                 ? "Run main.py (Cmd + Enter)"
                 : "Run Code (Cmd + Enter)"}
             </Button>
+            <Button
+              onClick={() => setShowAgentChat(!showAgentChat)}
+              variant={showAgentChat ? "default" : "outline"}
+              className="h-8 px-3"
+            >
+              🤖 Agent Chat
+            </Button>
           </div>
         </div>
 
@@ -1429,7 +1484,9 @@ function App() {
         <div className="flex flex-row flex-1 overflow-hidden">
           <FileExplorer
             fileTree={fileTree}
-            className="w-1/5 border-r border-gray-600"
+            className={`${
+              showAgentChat ? "w-1/5" : "w-1/4"
+            } border-r border-gray-600`}
             onSelectFile={openFileInTab}
             selectedFileId={activeTabId}
             onCreateFile={createFile}
@@ -1438,7 +1495,9 @@ function App() {
             onMoveFile={moveFile}
           />
 
-          <div className="flex-1 flex flex-col">
+          <div
+            className={`${showAgentChat ? "w-2/5" : "flex-1"} flex flex-col`}
+          >
             {/* Tab Bar */}
             {openTabs.length > 0 && (
               <div className="flex bg-[#2d2d2d] border-b border-gray-600 overflow-x-auto">
@@ -1531,6 +1590,18 @@ function App() {
               )}
             </div>
           </div>
+
+          {/* Agent Chat Panel */}
+          {showAgentChat && (
+            <div className="w-2/5 border-l border-gray-600 flex flex-col">
+              <AgentChat
+                fileTree={fileTree}
+                updateFileTree={updateFileTreeWithSync}
+                pyodideWorker={workerRef.current || undefined}
+                className="h-full"
+              />
+            </div>
+          )}
         </div>
         {/* AI Prompt Popover */}
         <Popover

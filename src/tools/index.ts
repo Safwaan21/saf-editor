@@ -45,14 +45,7 @@ export {
   testCodeTool,
 } from "./codeExecutionTools";
 
-export {
-  codeEditingTools,
-  replaceTextTool,
-  insertTextAtLineTool,
-  deleteLinesTool,
-  appendTextTool,
-  prependTextTool,
-} from "./codeEditingTools";
+export { codeEditingTools, modifyTextTool } from "./codeEditingTools";
 
 export {
   workspaceTools,
@@ -84,13 +77,7 @@ export const AVAILABLE_TOOLS = {
     "run_main_script",
     "test_code",
   ],
-  [TOOL_CATEGORIES.EDITING]: [
-    "replace_text",
-    "insert_text_at_line",
-    "delete_lines",
-    "append_text",
-    "prepend_text",
-  ],
+  [TOOL_CATEGORIES.EDITING]: ["modify_text"],
   [TOOL_CATEGORIES.WORKSPACE]: [
     "create_item",
     "delete_item",

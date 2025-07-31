@@ -72,53 +72,22 @@ Tools for executing Python code using the existing Pyodide worker infrastructure
 
 ### 3. Code Editing Tools (`codeEditingTools.ts`)
 
-Tools for editing and manipulating code files.
+Simplified and unified tool for editing and manipulating code files.
 
-#### `replace_text`
+#### `modify_text`
 
-- **Description**: Replaces specific text in a file with new content
+- **Description**: Modify file content by replacing the entire content or finding and replacing specific text
 - **Parameters**:
   - `filePath` (string): Path to the file to edit
-  - `findText` (string): Text to find and replace
-  - `replaceText` (string): Text to replace with
-  - `replaceAll` (boolean, optional): Whether to replace all occurrences
-- **Returns**: Success status and replacement information
-
-#### `insert_text_at_line`
-
-- **Description**: Inserts text at a specific line number
-- **Parameters**:
-  - `filePath` (string): Path to the file to edit
-  - `lineNumber` (number): Line number to insert at (1-based)
-  - `content` (string): Text content to insert
-- **Returns**: Success status and insertion information
-
-#### `delete_lines`
-
-- **Description**: Deletes a range of lines from a file
-- **Parameters**:
-  - `filePath` (string): Path to the file to edit
-  - `startLine` (number): Starting line number (1-based, inclusive)
-  - `endLine` (number, optional): Ending line number (defaults to startLine)
-- **Returns**: Success status and deletion information
-
-#### `append_text`
-
-- **Description**: Appends text to the end of a file
-- **Parameters**:
-  - `filePath` (string): Path to the file to edit
-  - `content` (string): Text content to append
-  - `addNewline` (boolean, optional): Whether to add newline before appending
-- **Returns**: Success status and append information
-
-#### `prepend_text`
-
-- **Description**: Prepends text to the beginning of a file
-- **Parameters**:
-  - `filePath` (string): Path to the file to edit
-  - `content` (string): Text content to prepend
-  - `addNewline` (boolean, optional): Whether to add newline after prepending
-- **Returns**: Success status and prepend information
+  - `newContent` (string, optional): New content for the file (replaces entire file)
+  - `findText` (string, optional): Text to find and replace (alternative to newContent)
+  - `replaceText` (string, optional): Text to replace with (used with findText)
+  - `replaceAll` (boolean, optional): Whether to replace all occurrences when using findText
+- **Returns**: Success status and modification information
+- **Usage Examples**:
+  - Full replacement: `{ filePath: "file.py", newContent: "new content" }`
+  - Find & replace: `{ filePath: "file.py", findText: "old", replaceText: "new" }`
+  - Replace all: `{ filePath: "file.py", findText: "old", replaceText: "new", replaceAll: true }`
 
 ### 4. Workspace Tools (`workspaceTools.ts`)
 

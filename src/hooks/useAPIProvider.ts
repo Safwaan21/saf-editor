@@ -38,14 +38,16 @@ ${language.toUpperCase()} CODE ONLY (no markdown, no explanations):`;
               headers: {
                 "Content-Type": "application/json",
                 "x-api-key": config.apiKey,
-                "anthropic-version": "2023-06-01",
               },
               body: JSON.stringify({
                 model: "claude-3-haiku-20240307",
                 max_tokens: 1000,
                 temperature: 0.1,
                 messages: [
-                  { role: "user", content: `${systemPrompt}\n\n${userPrompt}` },
+                  {
+                    role: "user",
+                    content: `${systemPrompt}\n\n${userPrompt}`,
+                  },
                 ],
               }),
             });
@@ -53,7 +55,7 @@ ${language.toUpperCase()} CODE ONLY (no markdown, no explanations):`;
 
           case "gpt":
             response = await fetch(
-              "https://api.openai.com/v1/chat/completions",
+              "http://localhost:3001/api/openai/chat/completions",
               {
                 method: "POST",
                 headers: {
