@@ -308,11 +308,7 @@ print("Script completed successfully!")`,
   };
 
   if (!isVisible) {
-    return (
-      <Button onClick={onToggle} variant="outline" size="sm" className="mb-2">
-        🧪 Tool Tests
-      </Button>
-    );
+    return null;
   }
 
   return (

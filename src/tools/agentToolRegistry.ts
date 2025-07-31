@@ -303,26 +303,29 @@ class AgentToolRegistryImpl implements AgentToolRegistry {
 export const agentToolRegistry = new AgentToolRegistryImpl();
 
 /**
- * Initialize the agent tool registry with all available tools
- * This should be called during application startup
+ * Initialize the agent tool registry with restricted tools for safe execution
+ * Only includes essential tools with controlled execution environment
  */
 export function initializeAgentTools(): void {
-  // Register all file system tools
+  // Register all file system tools (read-only operations)
   fileSystemTools.forEach((tool) => {
     agentToolRegistry.register(tool);
   });
 
-  // Register all code execution tools
-  codeExecutionTools.forEach((tool) => {
-    agentToolRegistry.register(tool);
-  });
+  // Register only the main script execution tool (controlled environment)
+  const mainScriptTool = codeExecutionTools.find(
+    (tool) => tool.name === "run_main_script"
+  );
+  if (mainScriptTool) {
+    agentToolRegistry.register(mainScriptTool);
+  }
 
-  // Register all code editing tools
+  // Register all code editing tools (for file modifications)
   codeEditingTools.forEach((tool) => {
     agentToolRegistry.register(tool);
   });
 
-  // Register all workspace management tools
+  // Register all workspace management tools (for project organization)
   workspaceTools.forEach((tool) => {
     agentToolRegistry.register(tool);
   });
@@ -330,7 +333,7 @@ export function initializeAgentTools(): void {
   console.log(
     `Initialized agent tool registry with ${
       agentToolRegistry.getStats().totalTools
-    } tools`
+    } tools (restricted set)`
   );
   console.log("Available tools:", agentToolRegistry.getStats().toolNames);
 }
@@ -339,10 +342,7 @@ export function initializeAgentTools(): void {
  * Utility function to create a properly formatted function call result
  * for AI model integration
  */
-export function createToolResponse(
-  toolName: string,
-  result: ToolResult
-): {
+export function createToolResponse(result: ToolResult): {
   tool_call_id?: string;
   content: string;
 } {
@@ -399,7 +399,7 @@ export async function executeToolSequence(
 }
 
 // Export types and utilities for external use
-export type { AgentTool, ToolResult, AgentToolRegistry, ToolExecutionContext };
+export type { AgentTool, ToolResult, AgentToolRegistry };
 export {
   fileSystemTools,
   codeExecutionTools,

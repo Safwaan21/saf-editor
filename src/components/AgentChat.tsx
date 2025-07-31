@@ -45,10 +45,13 @@ const AgentChat: React.FC<AgentChatProps> = ({
     error,
     messages,
     currentToolCalls,
+    isExecutingCode,
+    canCancel,
     initializeAgent,
     sendMessage,
     updateContext,
     clearConversation,
+    cancelExecution,
     // resetAgent, // Unused for now
   } = useOpenAIAgents();
 
@@ -236,7 +239,7 @@ Always explain what you're doing and why. Use the appropriate tools for each tas
       // Handle inline code
       text = text.replace(
         /`([^`]+)`/g,
-        '<code class="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-xs font-mono">$1</code>'
+        '<code class="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-xs font-mono break-words">$1</code>'
       );
 
       // Handle bold text
@@ -265,12 +268,12 @@ Always explain what you're doing and why. Use the appropriate tools for each tas
           elements.push(
             <div
               key={`code-${elements.length}`}
-              className="bg-gray-100 dark:bg-gray-800 rounded p-3 mb-3 overflow-x-auto"
+              className="bg-gray-100 dark:bg-gray-800 rounded p-3 mb-3 overflow-x-auto max-w-full"
             >
               <div className="text-xs text-gray-500 mb-1">
                 {codeBlockLanguage || "code"}
               </div>
-              <pre className="font-mono text-sm">
+              <pre className="font-mono text-sm whitespace-pre-wrap break-words">
                 <code>{codeBlockContent.join("\n")}</code>
               </pre>
             </div>
@@ -464,8 +467,24 @@ Always explain what you're doing and why. Use the appropriate tools for each tas
             {isLoading && (
               <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             )}
+            {isExecutingCode && (
+              <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-1 rounded-full flex items-center gap-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                Running code
+              </span>
+            )}
           </CardTitle>
           <div className="flex gap-2">
+            {canCancel && (
+              <Button
+                onClick={cancelExecution}
+                variant="destructive"
+                size="sm"
+                className="text-xs"
+              >
+                🛑 Cancel
+              </Button>
+            )}
             <Button
               onClick={() => setShowTestMenu(!showTestMenu)}
               variant="outline"
@@ -504,152 +523,150 @@ Always explain what you're doing and why. Use the appropriate tools for each tas
         />
 
         {/* Messages Area */}
-        <ScrollArea className="flex-1 pr-4 mb-4 h-0">
-          <div className="space-y-4">
-            {messages.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                <div className="text-4xl mb-4">👋</div>
-                <h3 className="text-lg font-medium mb-2">
-                  Welcome to Agent Chat!
-                </h3>
-                <p className="text-sm max-w-md mx-auto">
-                  I'm your AI coding assistant with access to powerful tools. I
-                  can help you:
-                </p>
-                <ul className="text-sm mt-3 space-y-1 max-w-sm mx-auto text-left">
-                  <li>• 📁 Read and manage your files</li>
-                  <li>• 🐍 Execute Python code safely</li>
-                  <li>• ✏️ Edit and refactor code</li>
-                  <li>• 🏗️ Organize your workspace</li>
-                </ul>
-                <p className="text-sm mt-4 text-muted-foreground">
-                  Just type a message below to get started!
-                </p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="space-y-3 pr-4 pb-4">
+              {messages.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <div className="text-4xl mb-4">👋</div>
+                  <h3 className="text-lg font-medium mb-2">
+                    Welcome to Agent Chat!
+                  </h3>
+                  <p className="text-sm max-w-md mx-auto">
+                    I'm your AI coding assistant with access to powerful tools.
+                    I can help you:
+                  </p>
+                  <ul className="text-sm mt-3 space-y-1 max-w-sm mx-auto text-left">
+                    <li>• 📁 Read and manage your files</li>
+                    <li>• 🐍 Execute Python code safely</li>
+                    <li>• ✏️ Edit and refactor code</li>
+                    <li>• 🏗️ Organize your workspace</li>
+                  </ul>
+                  <p className="text-sm mt-4 text-muted-foreground">
+                    Just type a message below to get started!
+                  </p>
+                </div>
+              ) : (
+                messages.map((message) => (
                   <div
-                    className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                      message.role === "user"
-                        ? "bg-blue-500 text-white"
-                        : message.role === "assistant"
-                        ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                        : "bg-yellow-100 dark:bg-yellow-900 text-yellow-900 dark:text-yellow-100"
+                    key={message.id}
+                    className={`flex ${
+                      message.role === "user" ? "justify-end" : "justify-start"
                     }`}
                   >
-                    <div className="flex items-start gap-2">
-                      <div className="text-sm font-medium">
-                        {message.role === "user" ? "👤" : "🤖"}
-                      </div>
-                      <div className="flex-1">
-                        {message.isStreaming ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-current rounded-full animate-pulse" />
-                            <span className="text-sm">Thinking...</span>
-                          </div>
-                        ) : (
-                          <div className="text-sm">
-                            {formatMessageContent(message.content)}
-                            {message.toolCalls &&
-                              message.toolCalls.length > 0 && (
-                                <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-700 rounded text-xs">
-                                  <div className="font-medium mb-1">
-                                    🔧 Tools used:
-                                  </div>
-                                  <div className="space-y-1">
+                    <div
+                      className={`max-w-[85%] break-words rounded-lg px-4 py-2 ${
+                        message.role === "user"
+                          ? "bg-blue-500 text-white"
+                          : message.role === "assistant"
+                          ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                          : "bg-yellow-100 dark:bg-yellow-900 text-yellow-900 dark:text-yellow-100"
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="text-sm font-medium flex-shrink-0">
+                          {message.role === "user" ? "👤" : "🤖"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          {message.isStreaming ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 bg-current rounded-full animate-pulse" />
+                              <span className="text-sm">Thinking...</span>
+                            </div>
+                          ) : (
+                            <div className="text-sm">
+                              <div className="break-words overflow-wrap-anywhere">
+                                {formatMessageContent(message.content)}
+                              </div>
+                              {message.toolCalls &&
+                                message.toolCalls.length > 0 && (
+                                  <div className="mt-2 space-y-1">
                                     {message.toolCalls.map((toolCall, idx) => (
                                       <div
                                         key={idx}
-                                        className="flex items-center gap-2"
+                                        className="flex items-center gap-1.5 text-xs bg-black/5 dark:bg-white/5 rounded px-2 py-1"
                                       >
                                         <span
-                                          className={
+                                          className={`text-xs ${
                                             toolCall.error
                                               ? "text-red-500"
                                               : toolCall.result !== undefined
                                               ? "text-green-500"
                                               : "text-yellow-500"
-                                          }
+                                          }`}
                                         >
                                           {toolCall.error
-                                            ? "❌"
+                                            ? "✕"
                                             : toolCall.result !== undefined
-                                            ? "✅"
-                                            : "⏳"}
+                                            ? "✓"
+                                            : "○"}
                                         </span>
-                                        <span className="font-mono">
+                                        <span className="font-mono text-xs truncate">
                                           {toolCall.toolName}
                                         </span>
-                                        {toolCall.executionTime && (
-                                          <span className="text-gray-400">
-                                            ({toolCall.executionTime}ms)
-                                          </span>
-                                        )}
                                       </div>
                                     ))}
                                   </div>
-                                </div>
-                              )}
-                          </div>
+                                )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs opacity-70 mt-1 flex items-center gap-2">
+                        <span>{message.timestamp.toLocaleTimeString()}</span>
+                        {message.toolCalls && message.toolCalls.length > 0 && (
+                          <span>
+                            • {message.toolCalls.length} tool
+                            {message.toolCalls.length !== 1 ? "s" : ""}
+                          </span>
                         )}
                       </div>
                     </div>
-                    <div className="text-xs opacity-70 mt-1">
-                      {message.timestamp.toLocaleTimeString()}
-                      {message.toolCalls && message.toolCalls.length > 0 && (
-                        <span className="ml-2">
-                          • {message.toolCalls.length} tool call
-                          {message.toolCalls.length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
                   </div>
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+        </div>
 
         {/* Tool Calls Drawer */}
         <ToolCallsDrawer toolCalls={currentToolCalls} className="" />
 
         {/* Input Area */}
-        <div className="flex-shrink-0 border-t pt-4">
-          <div className="flex gap-2">
+        <div className="flex-shrink-0 border-t pt-3">
+          <div className="flex gap-2 items-end">
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={
-                isInitialized
-                  ? "Ask me to help with your code, analyze files, run tests, or anything else!"
-                  : "Initializing agent..."
+                !isInitialized
+                  ? "Initializing agent..."
+                  : canCancel
+                  ? "Agent is processing... Use Cancel button to stop"
+                  : "Ask me to help with your code, analyze files, run tests, or anything else!"
               }
-              disabled={!isInitialized || isLoading}
-              className="flex-1 min-h-[60px] max-h-[120px] resize-none"
+              disabled={!isInitialized || isLoading || canCancel}
+              className="flex-1 min-h-[50px] max-h-[100px] resize-none text-sm"
             />
             <Button
               onClick={handleSendMessage}
-              disabled={!input.trim() || !isInitialized || isLoading}
-              size="lg"
-              className="self-end"
+              disabled={
+                !input.trim() || !isInitialized || isLoading || canCancel
+              }
+              size="sm"
+              className="h-[50px] px-4"
             >
               {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 "Send"
               )}
             </Button>
           </div>
-          <div className="text-xs text-muted-foreground mt-2">
+          <div className="text-xs text-muted-foreground mt-1">
             Press Enter to send, Shift+Enter for new line
           </div>
         </div>

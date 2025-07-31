@@ -45,6 +45,8 @@ export interface OpenAIAgentsState {
   agent: Agent | null;
   runner: Runner | null;
   currentToolCalls: AgentToolCall[];
+  isExecutingCode: boolean;
+  canCancel: boolean;
 }
 
 export interface OpenAIAgentsConfig {
@@ -316,11 +318,14 @@ export function useOpenAIAgents() {
     agent: null,
     runner: null,
     currentToolCalls: [],
+    isExecutingCode: false,
+    canCancel: false,
   });
 
   const agentRef = useRef<Agent | null>(null);
   const runnerRef = useRef<Runner | null>(null);
   const contextRef = useRef<ToolExecutionContext | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   /**
    * Format recent chat history for context
@@ -386,16 +391,40 @@ export function useOpenAIAgents() {
             const existingIndex = prev.currentToolCalls.findIndex(
               (tc) => tc.id === toolCall.id
             );
+
+            // Track if this is a code execution tool (only run_main_script is allowed)
+            const isCodeExecution = toolCall.toolName === "run_main_script";
+
+            const isCompleted =
+              toolCall.result !== undefined || toolCall.error !== undefined;
+
             if (existingIndex >= 0) {
               // Update existing tool call
               const updatedToolCalls = [...prev.currentToolCalls];
               updatedToolCalls[existingIndex] = toolCall;
-              return { ...prev, currentToolCalls: updatedToolCalls };
+
+              // Update execution status
+              const stillExecutingCode = updatedToolCalls.some((tc) => {
+                const isCodeTool = tc.toolName === "run_main_script";
+                return (
+                  isCodeTool &&
+                  tc.result === undefined &&
+                  tc.error === undefined
+                );
+              });
+
+              return {
+                ...prev,
+                currentToolCalls: updatedToolCalls,
+                isExecutingCode: stillExecutingCode,
+              };
             } else {
               // Add new tool call
               return {
                 ...prev,
                 currentToolCalls: [...prev.currentToolCalls, toolCall],
+                isExecutingCode:
+                  prev.isExecutingCode || (isCodeExecution && !isCompleted),
               };
             }
           });
@@ -508,9 +537,15 @@ Available tools: ${toolNames.join(", ")}`,
         ...prev,
         messages: [...prev.messages, assistantMessage],
         currentToolCalls: [], // Clear previous tool calls
+        canCancel: true,
+        isExecutingCode: false,
       }));
 
       try {
+        // Create abort controller for cancellation
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
         // Update context if needed
         if (contextRef.current) {
           agentToolRegistry.setContext(contextRef.current);
@@ -526,10 +561,11 @@ Available tools: ${toolNames.join(", ")}`,
             ? `${message}${chatHistory}Please consider the above chat history when responding and refer to previous conversations when relevant.`
             : message;
 
-        // Run the agent
+        // Run the agent with cancellation support
         const result = await runnerRef.current.run(
           agentRef.current,
-          enhancedMessage
+          enhancedMessage,
+          { signal: abortController.signal }
         );
 
         // Update the assistant message with the final result and tool calls
@@ -546,10 +582,19 @@ Available tools: ${toolNames.join(", ")}`,
               : msg
           ),
           currentToolCalls: [], // Clear current tool calls after attaching to message
+          canCancel: false,
+          isExecutingCode: false,
         }));
+
+        // Clear abort controller
+        abortControllerRef.current = null;
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error occurred";
+        const isAborted = error instanceof Error && error.name === "AbortError";
+        const errorMessage = isAborted
+          ? "Execution cancelled by user"
+          : error instanceof Error
+          ? error.message
+          : "Unknown error occurred";
 
         // Update the assistant message with error
         setState((prev) => ({
@@ -558,15 +603,22 @@ Available tools: ${toolNames.join(", ")}`,
             msg.id === assistantMessageId
               ? {
                   ...msg,
-                  content: `❌ Error: ${errorMessage}`,
+                  content: isAborted
+                    ? "🛑 Execution cancelled"
+                    : `❌ Error: ${errorMessage}`,
                   isStreaming: false,
                   toolCalls: prev.currentToolCalls, // Attach tool calls even on error
                 }
               : msg
           ),
-          error: errorMessage,
+          error: isAborted ? null : errorMessage,
           currentToolCalls: [], // Clear current tool calls after attaching to message
+          canCancel: false,
+          isExecutingCode: false,
         }));
+
+        // Clear abort controller
+        abortControllerRef.current = null;
       }
     },
     [formatChatHistoryForContext, state.messages]
@@ -581,6 +633,15 @@ Available tools: ${toolNames.join(", ")}`,
   }, []);
 
   /**
+   * Cancel the current execution
+   */
+  const cancelExecution = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  }, []);
+
+  /**
    * Clear the conversation
    */
   const clearConversation = useCallback(() => {
@@ -589,6 +650,8 @@ Available tools: ${toolNames.join(", ")}`,
       messages: [],
       error: null,
       currentToolCalls: [],
+      isExecutingCode: false,
+      canCancel: false,
     }));
   }, []);
 
@@ -596,9 +659,15 @@ Available tools: ${toolNames.join(", ")}`,
    * Reset the agent (useful for configuration changes)
    */
   const resetAgent = useCallback(() => {
+    // Cancel any ongoing execution
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     agentRef.current = null;
     runnerRef.current = null;
     contextRef.current = null;
+    abortControllerRef.current = null;
 
     setState({
       isInitialized: false,
@@ -608,15 +677,23 @@ Available tools: ${toolNames.join(", ")}`,
       agent: null,
       runner: null,
       currentToolCalls: [],
+      isExecutingCode: false,
+      canCancel: false,
     });
   }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // Cancel any ongoing execution
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
       agentRef.current = null;
       runnerRef.current = null;
       contextRef.current = null;
+      abortControllerRef.current = null;
     };
   }, []);
 
@@ -627,5 +704,6 @@ Available tools: ${toolNames.join(", ")}`,
     updateContext,
     clearConversation,
     resetAgent,
+    cancelExecution,
   };
 }
