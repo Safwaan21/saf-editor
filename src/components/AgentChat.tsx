@@ -507,11 +507,6 @@ Always explain what you're doing and why. Use the appropriate tools for each tas
             ❌ {error}
           </div>
         )}
-        {isInitialized && (
-          <div className="text-green-600 text-sm">
-            ✅ Agent ready with {fileTree.length} workspace files
-          </div>
-        )}
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col min-h-0 overflow-hidden">

@@ -1,6 +1,6 @@
 import "./App.css";
 import { Editor, type Monaco } from "@monaco-editor/react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Button } from "./components/ui/button";
 import { Dialog, DialogTrigger } from "./components/ui/dialog";
@@ -187,6 +187,8 @@ function App() {
   });
   const [titleState, setTitleState] = useState<"full" | "abbreviated">("full");
   const [showAgentChat, setShowAgentChat] = useState(false);
+  const [agentChatWidth, setAgentChatWidth] = useState(320); // Start smaller (320px instead of 40%)
+  const [isResizing, setIsResizing] = useState(false);
 
   const isFullyLoaded = pyodideReady && editorReady;
 
@@ -1197,6 +1199,53 @@ function App() {
     }
   };
 
+  // Agent Chat resize handlers
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  const handleResize = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing) return;
+
+      const container = document.querySelector(
+        ".main-content-area"
+      ) as HTMLElement;
+      if (!container) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const newWidth = containerRect.right - e.clientX;
+      const minWidth = 280;
+      const maxWidth = containerRect.width * 0.6; // Max 60% of container width
+
+      const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+      setAgentChatWidth(clampedWidth);
+    },
+    [isResizing]
+  );
+
+  const handleResizeEnd = () => {
+    setIsResizing(false);
+  };
+
+  // Add global event listeners for resize
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener("mousemove", handleResize);
+      document.addEventListener("mouseup", handleResizeEnd);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+
+      return () => {
+        document.removeEventListener("mousemove", handleResize);
+        document.removeEventListener("mouseup", handleResizeEnd);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+    }
+  }, [isResizing, handleResize]);
+
   return (
     <div className="relative bg-[#1e1e1e] h-screen">
       {/* Loading Screen Overlay */}
@@ -1481,12 +1530,12 @@ function App() {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex flex-row flex-1 overflow-hidden">
+        <div className="flex flex-row flex-1 overflow-hidden main-content-area">
           <FileExplorer
             fileTree={fileTree}
             className={`${
               showAgentChat ? "w-1/5" : "w-1/4"
-            } border-r border-gray-600`}
+            } border-r border-gray-600 flex-shrink-0`}
             onSelectFile={openFileInTab}
             selectedFileId={activeTabId}
             onCreateFile={createFile}
@@ -1496,7 +1545,12 @@ function App() {
           />
 
           <div
-            className={`${showAgentChat ? "w-2/5" : "flex-1"} flex flex-col`}
+            className="flex flex-col flex-1"
+            style={
+              showAgentChat
+                ? { width: `calc(100% - 20% - ${agentChatWidth}px)` }
+                : {}
+            }
           >
             {/* Tab Bar */}
             {openTabs.length > 0 && (
@@ -1593,12 +1647,27 @@ function App() {
 
           {/* Agent Chat Panel */}
           {showAgentChat && (
-            <div className="w-2/5 border-l border-gray-600 flex flex-col">
+            <div
+              className="border-l border-gray-600 flex flex-shrink-0 relative"
+              style={{ width: `${agentChatWidth}px` }}
+            >
+              {/* Resize Handle */}
+              <div
+                className={`absolute left-0 top-0 bottom-0 w-1 bg-transparent hover:bg-blue-500 cursor-col-resize z-10 transition-colors ${
+                  isResizing ? "bg-blue-500" : ""
+                }`}
+                onMouseDown={handleResizeStart}
+                style={{ marginLeft: "-2px" }}
+                title="Drag to resize Agent Chat"
+              >
+                {/* Visual indicator for resize handle */}
+                <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1 h-8 bg-gray-500 opacity-0 hover:opacity-100 transition-opacity" />
+              </div>
               <AgentChat
                 fileTree={fileTree}
                 updateFileTree={updateFileTreeWithSync}
                 pyodideWorker={workerRef.current || undefined}
-                className="h-full"
+                className="h-full w-full"
               />
             </div>
           )}
