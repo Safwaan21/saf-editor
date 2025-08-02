@@ -95,6 +95,7 @@ export const createItemTool: AgentTool = {
 
   async execute(
     params: WorkspaceParams & {
+      path: string;
       fileTree: FileNode[];
       updateFileTree: (updater: (prev: FileNode[]) => FileNode[]) => void;
       content?: string;
@@ -116,7 +117,9 @@ export const createItemTool: AgentTool = {
       }
 
       // Parse path to get parent directory and item name
-      const pathParts = path.split("/").filter((part) => part.length > 0);
+      const pathParts = path
+        .split("/")
+        .filter((part: string) => part.length > 0);
       const itemName = pathParts.pop()!;
       const parentPath = pathParts.join("/");
 

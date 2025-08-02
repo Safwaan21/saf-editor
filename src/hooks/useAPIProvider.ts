@@ -9,7 +9,6 @@ export const useAPIProvider = () => {
   const generateCodeSuggestion = useCallback(
     async (
       prompt: string,
-      codeContext: string,
       language: string = "python",
       config: APIConfig
     ): Promise<string> => {

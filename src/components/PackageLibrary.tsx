@@ -10,9 +10,13 @@ import {
 import { agentToolRegistry } from "@/tools";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 export function PackageLibrary({ pyodideWorker }: { pyodideWorker?: Worker }) {
-  const [installedPackages, setInstalledPackages] = useState<string[]>([]);
+  const [installedPackages, setInstalledPackages] = useState<Set<string>>(
+    new Set()
+  );
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -22,7 +26,7 @@ export function PackageLibrary({ pyodideWorker }: { pyodideWorker?: Worker }) {
           pyodideWorker,
         });
         if (result.success && result.data?.packages) {
-          setInstalledPackages(result.data.packages);
+          setInstalledPackages(new Set(result.data.packages));
         }
       }
     };
@@ -36,9 +40,11 @@ export function PackageLibrary({ pyodideWorker }: { pyodideWorker?: Worker }) {
         package: packageName,
       });
       if (result.success) {
-        setInstalledPackages([...installedPackages, packageName]);
+        setInstalledPackages(new Set(installedPackages).add(packageName));
       } else {
-        console.error(result.error);
+        toast.error(
+          "Failed to load installed package. Please check to make sure it exists. "
+        );
       }
     }
   };
@@ -63,14 +69,9 @@ export function PackageLibrary({ pyodideWorker }: { pyodideWorker?: Worker }) {
           />
           <Button onClick={() => installPackage(search)}>Install</Button>
           <div className="grid gap-4">
-            {installedPackages.map((packageName) => (
+            {Array.from(installedPackages).map((packageName) => (
               <div key={packageName}>
-                <Button
-                  variant="outline"
-                  onClick={() => installPackage(packageName)}
-                >
-                  {packageName}
-                </Button>
+                <Badge>{packageName}</Badge>
               </div>
             ))}
           </div>

@@ -75,8 +75,7 @@ export const listPackagesTool: AgentTool = {
     type: "object",
     properties: {},
   },
-  async execute(params: { pyodideWorker: Worker }): Promise<ToolResult> {
-    const { pyodideWorker } = params;
+  async execute(): Promise<ToolResult> {
     return {
       success: true,
       data: {

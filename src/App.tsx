@@ -1036,11 +1036,7 @@ function App() {
         if (!llmState.isInitialized && !llmState.isLoading) {
           await initializeModel(aiConfig.webllmModel);
         }
-        suggestedCode = await webllmGenerateCode(
-          aiPopover.prompt,
-          aiPopover.codeContext,
-          "python"
-        );
+        suggestedCode = await webllmGenerateCode(aiPopover.prompt, "python");
       } else if (
         aiConfig.type === "api" &&
         aiConfig.apiProvider &&
@@ -1048,7 +1044,6 @@ function App() {
       ) {
         suggestedCode = await apiProvider.generateCodeSuggestion(
           aiPopover.prompt,
-          aiPopover.codeContext,
           "python",
           {
             provider: aiConfig.apiProvider as "claude" | "gpt" | "gemini",

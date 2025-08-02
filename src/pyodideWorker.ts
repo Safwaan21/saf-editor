@@ -21,7 +21,6 @@ self.onmessage = async (event) => {
       });
       await pyodide.loadPackage("micropip");
       micropip = pyodide.pyimport("micropip");
-      await micropip.install("numpy");
 
       await pyodide.runPythonAsync(`
         import sys
