@@ -11,7 +11,6 @@ export type {
   AgentTool,
   ToolResult,
   AgentToolRegistry,
-  ToolExecutionContext,
   FileSystemParams,
   CodeExecutionParams,
   CodeExecutionResult,
@@ -26,7 +25,6 @@ export {
   initializeAgentTools,
   createToolResponse,
   executeToolSequence,
-  type ToolExecutionContext,
 } from "./agentToolRegistry";
 
 // Export tool collections
@@ -55,6 +53,8 @@ export {
   moveItemTool,
   copyItemTool,
 } from "./workspaceTools";
+
+export { installPackageTool, listPackagesTool } from "./packageManagementTools";
 
 /**
  * Tool Categories for easy reference

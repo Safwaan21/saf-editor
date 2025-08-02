@@ -38,6 +38,9 @@ import { WorkspaceSerializer } from "./utils/workspaceSharing";
 import { BlurFade } from "./components/magicui/blur-fade";
 import { ShineBorder } from "./components/magicui/shine-border";
 
+import { PackageLibrary } from "./components/PackageLibrary";
+import { agentToolRegistry, initializeAgentTools } from "./tools";
+
 export interface FileNode {
   id: string;
   name: string;
@@ -214,6 +217,24 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [isFullyLoaded]);
+
+  // Initialize agent tools on app startup
+  useEffect(() => {
+    if (!agentToolRegistry.getStats().totalTools) {
+      initializeAgentTools();
+    }
+  }, []);
+
+  // Set agent tool registry context when pyodide is ready
+  useEffect(() => {
+    if (pyodideReady && agentToolRegistry.getStats().totalTools) {
+      agentToolRegistry.setContext({
+        fileTree,
+        updateFileTree: updateFileTreeWithSync,
+        pyodideWorker: workerRef.current || undefined,
+      });
+    }
+  }, [pyodideReady, fileTree]);
 
   // Switch to stderr tab when there's an error, or back to stdout on successful runs
   useEffect(() => {
@@ -1526,6 +1547,7 @@ function App() {
             >
               🤖 Agent Chat
             </Button>
+            <PackageLibrary pyodideWorker={workerRef.current || undefined} />
           </div>
         </div>
 

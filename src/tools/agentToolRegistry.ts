@@ -13,6 +13,7 @@ import { fileSystemTools } from "./fileSystemTools";
 import { codeExecutionTools } from "./codeExecutionTools";
 import { codeEditingTools } from "./codeEditingTools";
 import { workspaceTools } from "./workspaceTools";
+import { packageManagementTools } from "./packageManagementTools";
 
 /**
  * Tool execution context interface
@@ -170,6 +171,7 @@ class AgentToolRegistryImpl implements AgentToolRegistry {
       execution: codeExecutionTools.map((t) => t.name),
       editing: codeEditingTools.map((t) => t.name),
       workspace: workspaceTools.map((t) => t.name),
+      packageManagement: packageManagementTools.map((t) => t.name),
     };
 
     const toolNames = categoryMap[category] || [];
@@ -293,6 +295,7 @@ class AgentToolRegistryImpl implements AgentToolRegistry {
         execution: this.getToolsByCategory("execution").length,
         editing: this.getToolsByCategory("editing").length,
         workspace: this.getToolsByCategory("workspace").length,
+        packageManagement: this.getToolsByCategory("packageManagement").length,
       },
       toolNames,
     };
@@ -327,6 +330,11 @@ export function initializeAgentTools(): void {
 
   // Register all workspace management tools (for project organization)
   workspaceTools.forEach((tool) => {
+    agentToolRegistry.register(tool);
+  });
+
+  // Register all package management tools (for package installation)
+  packageManagementTools.forEach((tool) => {
     agentToolRegistry.register(tool);
   });
 
@@ -405,4 +413,5 @@ export {
   codeExecutionTools,
   codeEditingTools,
   workspaceTools,
+  packageManagementTools,
 };

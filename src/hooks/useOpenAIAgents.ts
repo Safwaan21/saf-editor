@@ -10,11 +10,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Agent, Runner, setDefaultOpenAIClient, tool } from "@openai/agents";
 import { z } from "zod";
-import {
-  agentToolRegistry,
-  initializeAgentTools,
-  type ToolExecutionContext,
-} from "../tools";
+import { agentToolRegistry, initializeAgentTools } from "../tools";
+import type { ToolExecutionContext } from "../tools/agentToolRegistry";
 import { OpenAI } from "openai";
 
 // Types for OpenAI Agents integration
@@ -625,14 +622,6 @@ Available tools: ${toolNames.join(", ")}`,
   );
 
   /**
-   * Update the tool execution context
-   */
-  const updateContext = useCallback((newContext: ToolExecutionContext) => {
-    contextRef.current = newContext;
-    agentToolRegistry.setContext(newContext);
-  }, []);
-
-  /**
    * Cancel the current execution
    */
   const cancelExecution = useCallback(() => {
@@ -701,7 +690,6 @@ Available tools: ${toolNames.join(", ")}`,
     ...state,
     initializeAgent,
     sendMessage,
-    updateContext,
     clearConversation,
     resetAgent,
     cancelExecution,

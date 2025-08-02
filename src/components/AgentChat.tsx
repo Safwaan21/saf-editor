@@ -49,7 +49,6 @@ const AgentChat: React.FC<AgentChatProps> = ({
     canCancel,
     initializeAgent,
     sendMessage,
-    updateContext,
     clearConversation,
     cancelExecution,
     // resetAgent, // Unused for now
@@ -141,17 +140,6 @@ Remember: You are a coding assistant that DOES things, not just talks about them
     initializeAgent,
   ]);
 
-  // Update context when dependencies change
-  useEffect(() => {
-    if (isInitialized) {
-      updateContext({
-        fileTree,
-        updateFileTree,
-        pyodideWorker,
-      });
-    }
-  }, [fileTree, updateFileTree, pyodideWorker, isInitialized, updateContext]);
-
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -185,13 +173,6 @@ Remember: You are a coding assistant that DOES things, not just talks about them
     const { agentToolRegistry } = await import("../tools");
 
     try {
-      // Set the current context for tools (file tree, update function, etc.)
-      agentToolRegistry.setContext({
-        fileTree,
-        updateFileTree,
-        pyodideWorker,
-      });
-
       // Execute the tool directly
       const result = await agentToolRegistry.execute(toolName, parameters);
 

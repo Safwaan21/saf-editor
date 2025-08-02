@@ -8,15 +8,20 @@ interface FileData {
 }
 
 let pyodide: PyodideInterface | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let micropip: any = null;
 
 self.onmessage = async (event) => {
-  const { type, code, files } = event.data;
+  const { type, code, files, packageName } = event.data;
 
   if (type === "init") {
     try {
       pyodide = await loadPyodide({
         indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/",
       });
+      await pyodide.loadPackage("micropip");
+      micropip = pyodide.pyimport("micropip");
+      await micropip.install("numpy");
 
       await pyodide.runPythonAsync(`
         import sys
@@ -33,6 +38,22 @@ self.onmessage = async (event) => {
       `);
 
       self.postMessage({ type: "ready" });
+    } catch (err) {
+      self.postMessage({
+        type: "error",
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  }
+
+  if (type === "install") {
+    console.log(`Installing package ${packageName}`);
+    try {
+      await micropip.install(packageName);
+      self.postMessage({
+        type: "success",
+        message: `Installed package ${packageName}`,
+      });
     } catch (err) {
       self.postMessage({
         type: "error",
