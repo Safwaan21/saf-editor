@@ -37,7 +37,7 @@ export function PackageLibrary({ pyodideWorker }: { pyodideWorker?: Worker }) {
     if (pyodideWorker) {
       const result = await agentToolRegistry.execute("install_package", {
         pyodideWorker,
-        package: packageName,
+        packageName,
       });
       if (result.success) {
         setInstalledPackages(new Set(installedPackages).add(packageName));

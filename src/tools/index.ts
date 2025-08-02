@@ -64,6 +64,7 @@ export const TOOL_CATEGORIES = {
   EXECUTION: "execution",
   EDITING: "editing",
   WORKSPACE: "workspace",
+  PACKAGE_MANAGEMENT: "packageManagement",
 } as const;
 
 /**
@@ -85,4 +86,5 @@ export const AVAILABLE_TOOLS = {
     "move_item",
     "copy_item",
   ],
+  PACKAGE_MANAGEMENT: ["install_package", "list_packages"],
 } as const;

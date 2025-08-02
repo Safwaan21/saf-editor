@@ -133,6 +133,18 @@ class AgentToolRegistryImpl implements AgentToolRegistry {
         ...this.context,
       };
 
+      // Validate parameters before execution
+      const validation = this.validateParameters(name, enhancedParams);
+      if (!validation.valid) {
+        return {
+          success: false,
+          error: `Parameter validation failed: ${validation.errors.join(", ")}`,
+          metadata: {
+            executionTime: Date.now() - startTime,
+          },
+        };
+      }
+
       // Execute the tool
       const result = await tool.execute(enhancedParams);
 
@@ -315,13 +327,10 @@ export function initializeAgentTools(): void {
     agentToolRegistry.register(tool);
   });
 
-  // Register only the main script execution tool (controlled environment)
-  const mainScriptTool = codeExecutionTools.find(
-    (tool) => tool.name === "run_main_script"
-  );
-  if (mainScriptTool) {
-    agentToolRegistry.register(mainScriptTool);
-  }
+  // Register all code execution tools
+  codeExecutionTools.forEach((tool) => {
+    agentToolRegistry.register(tool);
+  });
 
   // Register all code editing tools (for file modifications)
   codeEditingTools.forEach((tool) => {

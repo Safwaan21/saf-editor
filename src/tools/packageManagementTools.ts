@@ -8,17 +8,18 @@ export const installPackageTool: AgentTool = {
   parameters: {
     type: "object",
     properties: {
-      package: {
+      packageName: {
         type: "string",
         description: "The name of the package to install",
       },
     },
+    required: ["packageName"],
   },
   async execute(params: {
-    package: string;
+    packageName: string;
     pyodideWorker: Worker;
   }): Promise<ToolResult> {
-    const { package: packageName, pyodideWorker } = params;
+    const { packageName, pyodideWorker } = params;
 
     if (installedPackages.has(packageName)) {
       return {

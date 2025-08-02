@@ -205,6 +205,16 @@ function convertToOpenAITool(
       });
       break;
 
+    case "install_package":
+      zodSchema = z.object({
+        packageName: z.string().describe("The name of the package to install"),
+      });
+      break;
+
+    case "list_packages":
+      zodSchema = z.object({});
+      break;
+
     default:
       // Fallback for any tools we haven't explicitly defined
       zodSchema = z.object({});
