@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { toast } from "sonner";
 
 interface APIConfig {
   provider: "claude" | "gpt" | "gemini";
@@ -141,7 +142,11 @@ ${language.toUpperCase()} CODE ONLY (no markdown, no explanations):`;
 
         return generatedCode;
       } catch (error) {
-        console.error("Failed to generate code via API:", error);
+        toast.error(
+          `Failed to generate code via API: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
         throw new Error(
           `Failed to generate code suggestion: ${
             error instanceof Error ? error.message : "Unknown error"
